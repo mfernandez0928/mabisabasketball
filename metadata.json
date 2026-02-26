@@ -1,0 +1,8 @@
+{
+  "name": "Mabisa",
+  "description": "The official hub for Mabisa Basketball. High-energy streetball, live stats, and community runs.",
+  "requestFramePermissions": [
+    "geolocation",
+    "camera"
+  ]
+}

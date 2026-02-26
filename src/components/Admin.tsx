@@ -1,0 +1,1349 @@
+import React, { useState, useEffect } from "react";
+import { Link, useNavigate } from "react-router-dom";
+import { motion } from "motion/react";
+import {
+  Save,
+  Plus,
+  Trash2,
+  LogOut,
+  ChevronRight,
+  ChevronDown,
+  ExternalLink,
+  Image as ImageIcon,
+  MessageSquare,
+  Users,
+  Trophy,
+  Camera,
+  Loader2,
+} from "lucide-react";
+import { PlayerStats, GameResult, UpcomingGame } from "../types";
+import { Logo } from "./Logo";
+
+import { db, storage } from "../lib/firebase";
+import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
+
+export const Admin: React.FC = () => {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [password, setPassword] = useState("");
+  const [data, setData] = useState<{
+    players: PlayerStats[];
+    games: GameResult[];
+    upcomingGame: UpcomingGame;
+    socialMessages: { user: string; msg: string; time: string }[];
+    socialPosts: {
+      id: string;
+      user: string;
+      msg: string;
+      time: string;
+      image?: string;
+      url: string;
+    }[];
+  } | null>(null);
+  const [activeTab, setActiveTab] = useState<
+    "schedule" | "stats" | "players" | "social" | "reservations"
+  >("schedule");
+
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const token = localStorage.getItem("admin-token");
+    if (token) setIsLoggedIn(true);
+
+    // Use real-time listener for admin too
+    const unsub = onSnapshot(
+      doc(db, "settings", "app_data"),
+      (docSnap) => {
+        if (docSnap.exists()) {
+          setData(docSnap.data() as any);
+        }
+      },
+      (err) => {
+        console.warn("Firestore Admin Error, falling back to local:", err);
+        fetchData(); // Fallback to local API
+      },
+    );
+
+    return () => unsub();
+  }, []);
+
+  const fetchData = async () => {
+    try {
+      const res = await fetch("/api/data");
+      const json = await res.json();
+      setData(json);
+    } catch (err) {
+      console.error("Local data fetch failed:", err);
+    }
+  };
+
+  const handleLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    // Simple client-side check for now, or keep the server route for auth
+    if (password === "mabisa@2026!") {
+      localStorage.setItem("admin-token", "admin-token-123");
+      setIsLoggedIn(true);
+    } else {
+      alert("Invalid password");
+    }
+  };
+
+  const handleLogout = () => {
+    localStorage.removeItem("admin-token");
+    setIsLoggedIn(false);
+    navigate("/");
+  };
+
+  const confirmReservation = async (id: string) => {
+    if (!data) return;
+    try {
+      const pending = data.upcomingGame?.pendingReservations || [];
+      const reservationIndex = pending.findIndex((r: any) => r.id === id);
+      if (reservationIndex === -1) return;
+
+      const reservation = pending[reservationIndex];
+
+      // Deep clone to avoid mutation issues
+      const newData = JSON.parse(JSON.stringify(data));
+
+      // Ensure arrays exist
+      if (!newData.upcomingGame) newData.upcomingGame = {};
+      if (!newData.upcomingGame.pendingReservations)
+        newData.upcomingGame.pendingReservations = [];
+      if (!newData.upcomingGame.reservedPlayers)
+        newData.upcomingGame.reservedPlayers = [];
+      if (!newData.players) newData.players = [];
+
+      // Remove from pending
+      newData.upcomingGame.pendingReservations.splice(reservationIndex, 1);
+
+      // Add to reserved
+      newData.upcomingGame.reservedPlayers.push({
+        firstName: reservation.firstName,
+        lastName: reservation.lastName,
+        age: reservation.age,
+        positions: reservation.positions || [],
+      });
+
+      // Update filled slots
+      newData.upcomingGame.filledSlots = (
+        newData.upcomingGame.reservedPlayers || []
+      ).length;
+
+      // Add to global players list if not already there
+      const fullName =
+        `${reservation.firstName} ${reservation.lastName}`.trim();
+      const playerExists = newData.players.some(
+        (p: any) => p.name?.toLowerCase() === fullName.toLowerCase(),
+      );
+
+      if (!playerExists) {
+        newData.players.push({
+          id: "p" + Math.random().toString(36).substr(2, 5),
+          name: fullName,
+          points: 0,
+          rebounds: 0,
+          assists: 0,
+          steals: 0,
+          blocks: 0,
+          mvps: 0,
+          wins: 0,
+          image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`,
+        });
+      }
+
+      await setDoc(doc(db, "settings", "app_data"), newData);
+    } catch (error) {
+      console.error("Error confirming reservation:", error);
+      alert("Failed to confirm reservation. Check console for details.");
+    }
+  };
+
+  const rejectReservation = async (id: string) => {
+    if (!data || !confirm("Are you sure you want to reject this reservation?"))
+      return;
+    try {
+      const pending = data.upcomingGame?.pendingReservations || [];
+      const reservationIndex = pending.findIndex((r: any) => r.id === id);
+      if (reservationIndex === -1) return;
+
+      const newData = JSON.parse(JSON.stringify(data));
+      if (newData.upcomingGame?.pendingReservations) {
+        newData.upcomingGame.pendingReservations.splice(reservationIndex, 1);
+      }
+
+      await setDoc(doc(db, "settings", "app_data"), newData);
+    } catch (error) {
+      console.error("Error rejecting reservation:", error);
+      alert("Failed to reject reservation.");
+    }
+  };
+
+  const syncReservedToGlobal = () => {
+    if (!data) return;
+    const newData = JSON.parse(JSON.stringify(data));
+    let addedCount = 0;
+
+    (newData.upcomingGame?.reservedPlayers || []).forEach((res: any) => {
+      const fullName = `${res.firstName} ${res.lastName}`.trim();
+      if (!fullName) return;
+
+      const exists = newData.players.some(
+        (p: any) => p.name?.toLowerCase() === fullName.toLowerCase(),
+      );
+      if (!exists) {
+        newData.players.push({
+          id: "p" + Math.random().toString(36).substr(2, 5),
+          name: fullName,
+          points: 0,
+          rebounds: 0,
+          assists: 0,
+          steals: 0,
+          blocks: 0,
+          mvps: 0,
+          wins: 0,
+          image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`,
+        });
+        addedCount++;
+      }
+    });
+
+    if (addedCount > 0) {
+      setData(newData);
+      alert(`Synced! Added ${addedCount} new players to the global list.`);
+    } else {
+      alert("All reserved players are already in the global list.");
+    }
+  };
+
+  const [isSaving, setIsSaving] = useState(false);
+  const [uploadingId, setUploadingId] = useState<string | null>(null);
+
+  const handleImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    playerId: string,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !data) return;
+
+    setUploadingId(playerId);
+    try {
+      const storageRef = ref(storage, `players/${playerId}_${Date.now()}`);
+      const snapshot = await uploadBytes(storageRef, file);
+      const downloadURL = await getDownloadURL(snapshot.ref);
+
+      const newPlayers = data.players.map((p) =>
+        p.id === playerId ? { ...p, image: downloadURL } : p,
+      );
+
+      setData({ ...data, players: newPlayers });
+      alert("Photo uploaded successfully!");
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert(
+        "Failed to upload image. Make sure Firebase Storage is enabled in your console.",
+      );
+    } finally {
+      setUploadingId(null);
+    }
+  };
+
+  const handleSave = async () => {
+    if (!data) return;
+    setIsSaving(true);
+    try {
+      // Auto-sync reserved players to global list on save
+      const newData = JSON.parse(JSON.stringify(data));
+      (newData.upcomingGame?.reservedPlayers || []).forEach((res: any) => {
+        const fullName = `${res.firstName} ${res.lastName}`.trim();
+        if (!fullName) return;
+        const exists = newData.players.some(
+          (p: any) => p.name?.toLowerCase() === fullName.toLowerCase(),
+        );
+        if (!exists) {
+          newData.players.push({
+            id: "p" + Math.random().toString(36).substr(2, 5),
+            name: fullName,
+            points: 0,
+            rebounds: 0,
+            assists: 0,
+            steals: 0,
+            blocks: 0,
+            mvps: 0,
+            wins: 0,
+            image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`,
+          });
+        }
+      });
+
+      await setDoc(doc(db, "settings", "app_data"), newData);
+      alert("Data saved successfully to Firestore!");
+    } catch (error) {
+      console.error(error);
+      alert("Error saving data to Firestore. Please check your rules.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center p-6">
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="w-full max-w-md bg-card-bg p-8 rounded-2xl border border-white/5 shadow-2xl"
+        >
+          <div className="flex flex-col items-center mb-8">
+            <Logo className="w-16 h-16 mb-4" />
+            <h1 className="text-3xl font-display text-center">Admin Access</h1>
+          </div>
+          <form onSubmit={handleLogin} className="space-y-4">
+            <div>
+              <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                Password
+              </label>
+              <input
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                placeholder="Enter admin password"
+              />
+            </div>
+            <button
+              type="submit"
+              className="w-full bg-neon-blue text-black font-display py-3 rounded-lg hover:bg-neon-red transition-colors"
+            >
+              LOGIN
+            </button>
+          </form>
+          <p className="mt-4 text-center text-xs text-white/20 font-mono">
+            Hint: WePlay
+          </p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!data)
+    return (
+      <div className="min-h-screen bg-dark-bg flex items-center justify-center text-white font-mono">
+        Loading...
+      </div>
+    );
+
+  return (
+    <div className="min-h-screen bg-dark-bg text-white">
+      <nav className="bg-card-bg border-b border-white/5 px-4 md:px-6 py-4 sticky top-0 z-50">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4">
+          <div className="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+            <div className="flex items-center gap-3">
+              <Logo className="w-8 h-8" />
+              <h1 className="text-xl md:text-2xl font-display">MABISA ADMIN</h1>
+            </div>
+            <div className="hidden md:block h-4 w-[1px] bg-white/10" />
+            <div className="flex gap-3 md:gap-4 overflow-x-auto w-full md:w-auto pb-2 md:pb-0 no-scrollbar">
+              {(
+                [
+                  "schedule",
+                  "reservations",
+                  "stats",
+                  "players",
+                  "social",
+                ] as const
+              ).map((tab) => (
+                <button
+                  key={tab}
+                  onClick={() => setActiveTab(tab)}
+                  className={`text-[10px] md:text-xs font-mono uppercase tracking-widest whitespace-nowrap ${activeTab === tab ? "text-neon-blue" : "text-white/40 hover:text-white"}`}
+                >
+                  {tab === "reservations" &&
+                  data?.upcomingGame?.pendingReservations &&
+                  data.upcomingGame.pendingReservations.length > 0 ? (
+                    <span className="flex items-center gap-1">
+                      {tab}
+                      <span className="w-2 h-2 bg-neon-red rounded-full animate-pulse" />
+                    </span>
+                  ) : (
+                    tab
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="flex items-center justify-between w-full md:w-auto gap-4">
+            <Link
+              to="/"
+              className="flex items-center gap-2 text-white/40 hover:text-white text-[10px] font-mono uppercase tracking-widest"
+            >
+              <ExternalLink size={14} />{" "}
+              <span className="hidden sm:inline">View Site</span>
+            </Link>
+            <div className="flex gap-2">
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className={`flex items-center gap-2 bg-neon-blue text-black px-3 md:px-4 py-2 rounded-lg font-display text-xs md:text-sm transition-all ${isSaving ? "opacity-50 cursor-not-allowed scale-95" : "hover:bg-neon-red"}`}
+              >
+                <Save size={16} className={isSaving ? "animate-pulse" : ""} />
+                {isSaving ? "SAVING..." : "SAVE"}
+              </button>
+              <button
+                onClick={handleLogout}
+                className="text-white/40 hover:text-white p-2"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </nav>
+
+      <main className="max-w-4xl mx-auto p-6 py-12">
+        {activeTab === "reservations" && (
+          <div className="space-y-8">
+            <div className="flex justify-between items-center">
+              <div>
+                <h2 className="text-3xl font-display">Pending Reservations</h2>
+                <p className="text-xs text-white/40 font-mono">
+                  Confirm payments to add players to the official list
+                </p>
+              </div>
+              <div className="bg-neon-blue/10 border border-neon-blue/20 px-4 py-2 rounded-lg">
+                <span className="text-xs font-mono text-neon-blue uppercase tracking-widest">
+                  {data.upcomingGame?.pendingReservations?.length || 0} Pending
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {!data.upcomingGame?.pendingReservations ||
+              data.upcomingGame.pendingReservations.length === 0 ? (
+                <div className="bg-card-bg p-12 rounded-2xl border border-white/5 text-center">
+                  <Users className="mx-auto text-white/10 mb-4" size={48} />
+                  <p className="text-white/40 font-mono">
+                    No pending reservations at the moment.
+                  </p>
+                </div>
+              ) : (
+                data.upcomingGame.pendingReservations.map((res: any) => (
+                  <div
+                    key={res.id}
+                    className="bg-card-bg p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row justify-between items-center gap-6"
+                  >
+                    <div className="flex-1 space-y-2">
+                      <div className="flex items-center gap-3">
+                        <h3 className="text-xl font-display">
+                          {res.firstName} {res.lastName}
+                        </h3>
+                        <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-mono text-white/40 uppercase">
+                          Age: {res.age}
+                        </span>
+                      </div>
+                      <div className="flex gap-2">
+                        {(res.positions || []).map((pos) => (
+                          <span
+                            key={pos}
+                            className="text-[10px] font-bold text-neon-blue uppercase tracking-wider"
+                          >
+                            {pos === 1
+                              ? "PG"
+                              : pos === 2
+                                ? "SG"
+                                : pos === 3
+                                  ? "SF"
+                                  : pos === 4
+                                    ? "PF"
+                                    : "C"}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="text-[10px] text-white/20 font-mono uppercase">
+                        Requested: {new Date(res.timestamp).toLocaleString()}
+                      </div>
+                    </div>
+
+                    <div className="flex gap-3 w-full md:w-auto">
+                      <button
+                        onClick={() => rejectReservation(res.id)}
+                        className="flex-1 md:flex-none px-6 py-2 border border-neon-red/50 text-neon-red rounded-lg text-xs font-mono uppercase hover:bg-neon-red/10 transition-colors"
+                      >
+                        Reject
+                      </button>
+                      <button
+                        onClick={() => confirmReservation(res.id)}
+                        className="flex-1 md:flex-none px-6 py-2 bg-neon-blue text-black rounded-lg text-xs font-mono uppercase font-bold hover:bg-white transition-colors"
+                      >
+                        Confirm Payment
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+        {activeTab === "schedule" && (
+          <div className="space-y-8">
+            <h2 className="text-3xl font-display">Upcoming Game</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 bg-card-bg p-6 rounded-2xl border border-white/5">
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                    Date & Time
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={data.upcomingGame?.date?.slice(0, 16) || ""}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        upcomingGame: {
+                          ...data.upcomingGame,
+                          date: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                    Time Range (e.g. 6pm - 8pm)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.upcomingGame?.timeRange || ""}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        upcomingGame: {
+                          ...data.upcomingGame,
+                          timeRange: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                    placeholder="6pm - 8pm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                    Location
+                  </label>
+                  <input
+                    type="text"
+                    value={data.upcomingGame?.location || ""}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        upcomingGame: {
+                          ...data.upcomingGame,
+                          location: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                  />
+                </div>
+              </div>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                    Entrance Fee (₱)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.upcomingGame?.entranceFee || ""}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        upcomingGame: {
+                          ...data.upcomingGame,
+                          entranceFee: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                      Total Slots
+                    </label>
+                    <input
+                      type="number"
+                      value={data.upcomingGame?.totalSlots || 0}
+                      onChange={(e) =>
+                        setData({
+                          ...data,
+                          upcomingGame: {
+                            ...data.upcomingGame,
+                            totalSlots: parseInt(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                      Filled Slots (Auto)
+                    </label>
+                    <div className="w-full bg-black/50 border border-white/5 rounded-lg px-4 py-2 text-white/40 font-mono">
+                      {(data.upcomingGame?.reservedPlayers || []).length}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <h3 className="text-xl font-display">Reserved Players</h3>
+                  <button
+                    onClick={syncReservedToGlobal}
+                    className="text-[10px] bg-white/5 hover:bg-white/10 px-2 py-1 rounded border border-white/10 text-white/40 font-mono uppercase transition-colors"
+                    title="Add all these names to the global Players list"
+                  >
+                    Sync to Global
+                  </button>
+                </div>
+                <button
+                  onClick={() =>
+                    setData({
+                      ...data,
+                      upcomingGame: {
+                        ...data.upcomingGame,
+                        reservedPlayers: [
+                          ...(data.upcomingGame?.reservedPlayers || []),
+                          {
+                            firstName: "",
+                            lastName: "",
+                            age: 25,
+                            positions: [1],
+                          },
+                        ],
+                      },
+                    })
+                  }
+                  className="text-neon-blue flex items-center gap-1 text-xs font-mono uppercase"
+                >
+                  <Plus size={14} /> Add Player
+                </button>
+              </div>
+              <div className="grid grid-cols-1 gap-4">
+                {(data.upcomingGame?.reservedPlayers || []).map(
+                  (player: any, idx: number) => (
+                    <div
+                      key={idx}
+                      className="bg-card-bg p-4 rounded-xl border border-white/5 space-y-4"
+                    >
+                      <div className="flex justify-between items-start">
+                        <div className="grid grid-cols-2 gap-4 flex-1">
+                          <div>
+                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                              First Name
+                            </label>
+                            <input
+                              type="text"
+                              value={player.firstName}
+                              onChange={(e) => {
+                                const newPlayers = [
+                                  ...data.upcomingGame.reservedPlayers,
+                                ];
+                                newPlayers[idx].firstName = e.target.value;
+                                setData({
+                                  ...data,
+                                  upcomingGame: {
+                                    ...data.upcomingGame,
+                                    reservedPlayers: newPlayers,
+                                  },
+                                });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                              Last Name
+                            </label>
+                            <input
+                              type="text"
+                              value={player.lastName}
+                              onChange={(e) => {
+                                const newPlayers = [
+                                  ...data.upcomingGame.reservedPlayers,
+                                ];
+                                newPlayers[idx].lastName = e.target.value;
+                                setData({
+                                  ...data,
+                                  upcomingGame: {
+                                    ...data.upcomingGame,
+                                    reservedPlayers: newPlayers,
+                                  },
+                                });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
+                            />
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newPlayers = (
+                              data.upcomingGame?.reservedPlayers || []
+                            ).filter((_, i) => i !== idx);
+                            setData({
+                              ...data,
+                              upcomingGame: {
+                                ...data.upcomingGame,
+                                reservedPlayers: newPlayers,
+                              },
+                            });
+                          }}
+                          className="ml-4 text-white/20 hover:text-neon-red"
+                        >
+                          <Trash2 size={18} />
+                        </button>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                            Age
+                          </label>
+                          <input
+                            type="number"
+                            value={player.age}
+                            onChange={(e) => {
+                              const newPlayers = [
+                                ...data.upcomingGame.reservedPlayers,
+                              ];
+                              newPlayers[idx].age = parseInt(e.target.value);
+                              setData({
+                                ...data,
+                                upcomingGame: {
+                                  ...data.upcomingGame,
+                                  reservedPlayers: newPlayers,
+                                },
+                              });
+                            }}
+                            className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
+                          />
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                            Positions (1-5)
+                          </label>
+                          <div className="flex gap-2">
+                            {[1, 2, 3, 4, 5].map((pos) => (
+                              <button
+                                key={pos}
+                                onClick={() => {
+                                  const newPlayers = [
+                                    ...(data.upcomingGame?.reservedPlayers ||
+                                      []),
+                                  ];
+                                  const currentPositions =
+                                    newPlayers[idx]?.positions || [];
+                                  if (currentPositions.includes(pos)) {
+                                    newPlayers[idx].positions =
+                                      currentPositions.filter((p) => p !== pos);
+                                  } else if (currentPositions.length < 2) {
+                                    newPlayers[idx].positions = [
+                                      ...currentPositions,
+                                      pos,
+                                    ];
+                                  }
+                                  setData({
+                                    ...data,
+                                    upcomingGame: {
+                                      ...data.upcomingGame,
+                                      reservedPlayers: newPlayers,
+                                    },
+                                  });
+                                }}
+                                className={`w-8 h-8 rounded border text-[10px] font-bold flex items-center justify-center transition-colors ${
+                                  (player.positions || []).includes(pos)
+                                    ? "bg-neon-blue border-neon-blue text-black"
+                                    : "bg-black border-white/10 text-white/40"
+                                }`}
+                              >
+                                {pos}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {activeTab === "stats" && (
+          <div className="space-y-8">
+            <div className="bg-neon-blue/5 border border-neon-blue/20 p-6 rounded-2xl space-y-4">
+              <div className="flex items-center gap-2 text-neon-blue">
+                <Trophy size={20} />
+                <h3 className="font-display text-xl">
+                  MVP of the Day Spotlight
+                </h3>
+              </div>
+              <p className="text-xs text-white/40 font-mono">
+                This text appears next to the MVP card on the main site.
+              </p>
+              <textarea
+                value={data.mvpDescription || ""}
+                onChange={(e) =>
+                  setData({ ...data, mvpDescription: e.target.value })
+                }
+                className="w-full bg-black border border-white/10 rounded-xl px-4 py-3 text-sm h-32 focus:outline-none focus:border-neon-blue"
+                placeholder="Write something about today's MVP dominance..."
+              />
+            </div>
+
+            <div className="flex justify-between items-center">
+              <h2 className="text-3xl font-display">Game History</h2>
+              <button
+                onClick={() =>
+                  setData({
+                    ...data,
+                    games: [
+                      {
+                        id: Math.random().toString(36).substr(2, 9),
+                        date: new Date().toLocaleDateString(),
+                        location: "Hoops Dome, QC",
+                        teamWhite: { score: 0, players: [] },
+                        teamBlue: { score: 0, players: [] },
+                        mvpId: "",
+                      },
+                      ...(data.games || []),
+                    ],
+                  })
+                }
+                className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-xs font-mono uppercase"
+              >
+                Add New Game
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {(data.games || []).map((game, gIdx) => (
+                <div
+                  key={game.id}
+                  className="bg-card-bg p-6 rounded-2xl border border-white/5 space-y-4"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="grid grid-cols-2 gap-4 flex-1">
+                      <div>
+                        <label className="block text-xs font-mono text-white/40 uppercase mb-1">
+                          Date
+                        </label>
+                        <input
+                          type="text"
+                          value={game.date}
+                          onChange={(e) => {
+                            const newGames = [...data.games];
+                            newGames[gIdx].date = e.target.value;
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-mono text-white/40 uppercase mb-1">
+                          Location
+                        </label>
+                        <input
+                          type="text"
+                          value={game.location}
+                          onChange={(e) => {
+                            const newGames = [...data.games];
+                            newGames[gIdx].location = e.target.value;
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
+                        />
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const newGames = (data.games || []).filter(
+                          (_, i) => i !== gIdx,
+                        );
+                        setData({ ...data, games: newGames });
+                      }}
+                      className="ml-4 text-white/20 hover:text-neon-red"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-8">
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-mono text-white/40 uppercase">
+                          Team White
+                        </span>
+                        <input
+                          type="number"
+                          value={game.teamWhite?.score || 0}
+                          onChange={(e) => {
+                            const newGames = [...(data.games || [])];
+                            newGames[gIdx].teamWhite.score = parseInt(
+                              e.target.value,
+                            );
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="w-16 bg-black border border-white/10 rounded px-2 py-1 text-center font-display"
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-xs font-mono text-white/40 uppercase">
+                          Team Blue
+                        </span>
+                        <input
+                          type="number"
+                          value={game.teamBlue?.score || 0}
+                          onChange={(e) => {
+                            const newGames = [...(data.games || [])];
+                            newGames[gIdx].teamBlue.score = parseInt(
+                              e.target.value,
+                            );
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="w-16 bg-black border border-white/10 rounded px-2 py-1 text-center font-display"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-mono text-white/40 uppercase mb-1">
+                      MVP Name
+                    </label>
+                    <input
+                      type="text"
+                      value={game.mvpId}
+                      onChange={(e) => {
+                        const newGames = [...data.games];
+                        newGames[gIdx].mvpId = e.target.value;
+                        setData({ ...data, games: newGames });
+                      }}
+                      className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
+                      placeholder="Enter MVP name"
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {activeTab === "players" && (
+          <div className="space-y-8">
+            <div className="flex justify-between items-center">
+              <h2 className="text-3xl font-display">Player Stats</h2>
+              <button
+                onClick={() =>
+                  setData({
+                    ...data,
+                    players: [
+                      ...(data.players || []),
+                      {
+                        id: Math.random().toString(36).substr(2, 9),
+                        name: "New Player",
+                        points: 0,
+                        rebounds: 0,
+                        assists: 0,
+                        steals: 0,
+                        blocks: 0,
+                        mvps: 0,
+                        wins: 0,
+                        image: "https://picsum.photos/seed/new/800/1000",
+                      },
+                    ],
+                  })
+                }
+                className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-xs font-mono uppercase"
+              >
+                Add Player
+              </button>
+            </div>
+
+            <div className="grid grid-cols-1 gap-4">
+              {(data.players || []).map((player, pIdx) => (
+                <div
+                  key={player.id}
+                  className="bg-card-bg p-6 rounded-2xl border border-white/5 space-y-4"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="flex gap-4 items-center flex-1">
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-black border border-white/10">
+                        <img
+                          src={player.image}
+                          alt=""
+                          className="w-full h-full object-cover"
+                        />
+                      </div>
+                      <input
+                        type="text"
+                        value={player.name}
+                        onChange={(e) => {
+                          const newPlayers = [...data.players];
+                          newPlayers[pIdx].name = e.target.value;
+                          setData({ ...data, players: newPlayers });
+                        }}
+                        className="bg-transparent border-b border-white/10 focus:border-neon-blue px-2 py-1 text-xl font-display"
+                      />
+                    </div>
+                    <button
+                      onClick={() => {
+                        const newPlayers = (data.players || []).filter(
+                          (_, i) => i !== pIdx,
+                        );
+                        setData({ ...data, players: newPlayers });
+                      }}
+                      className="text-white/20 hover:text-neon-red"
+                    >
+                      <Trash2 size={18} />
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-4 md:grid-cols-7 gap-4">
+                    {[
+                      { label: "PTS", key: "points" },
+                      { label: "REB", key: "rebounds" },
+                      { label: "AST", key: "assists" },
+                      { label: "STL", key: "steals" },
+                      { label: "BLK", key: "blocks" },
+                      { label: "MVPs", key: "mvps" },
+                      { label: "Wins", key: "wins" },
+                    ].map((stat) => (
+                      <div key={stat.key}>
+                        <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                          {stat.label}
+                        </label>
+                        <input
+                          type="number"
+                          value={(player as any)[stat.key]}
+                          onChange={(e) => {
+                            const newPlayers = [...data.players];
+                            (newPlayers[pIdx] as any)[stat.key] = parseInt(
+                              e.target.value,
+                            );
+                            setData({ ...data, players: newPlayers });
+                          }}
+                          className="w-full bg-black border border-white/10 rounded px-2 py-1 text-sm text-center"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2">
+                    <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                      Player Photo (MVP Photo)
+                    </label>
+                    <div className="flex gap-2">
+                      <div className="flex-1">
+                        <input
+                          type="text"
+                          value={player.image}
+                          onChange={(e) => {
+                            const newPlayers = [...data.players];
+                            newPlayers[pIdx].image = e.target.value;
+                            setData({ ...data, players: newPlayers });
+                          }}
+                          className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 text-xs font-mono focus:border-neon-blue outline-none"
+                          placeholder="Paste URL or use upload button ->"
+                        />
+                      </div>
+                      <label className="cursor-pointer bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 flex items-center justify-center transition-colors group">
+                        {uploadingId === player.id ? (
+                          <Loader2
+                            size={16}
+                            className="animate-spin text-neon-blue"
+                          />
+                        ) : (
+                          <Camera
+                            size={16}
+                            className="text-white/40 group-hover:text-white"
+                          />
+                        )}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => handleImageUpload(e, player.id)}
+                          disabled={uploadingId !== null}
+                        />
+                      </label>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        {activeTab === "social" && (
+          <div className="space-y-12">
+            {/* Manual Social Posts Section */}
+            <div className="space-y-6">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-neon-blue/20 rounded-xl">
+                    <ImageIcon className="text-neon-blue" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-display">Social Feed Posts</h2>
+                    <p className="text-xs text-white/40 font-mono">
+                      Create and manage posts for the main social wall
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    setData({
+                      ...data!,
+                      socialPosts: [
+                        {
+                          id: Math.random().toString(36).substr(2, 9),
+                          user: "Mabisa Basketball",
+                          msg: "",
+                          time: new Date().toLocaleDateString(),
+                          image:
+                            "https://picsum.photos/seed/" +
+                            Math.random() +
+                            "/800/600",
+                          url: "https://www.facebook.com/mabisabasketball",
+                        },
+                        ...(data?.socialPosts || []),
+                      ],
+                    })
+                  }
+                  className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-xs font-mono uppercase flex items-center gap-2"
+                >
+                  <Plus size={14} /> New Post
+                </button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6">
+                {(data?.socialPosts || []).map((post, pIdx) => (
+                  <div
+                    key={post.id}
+                    className="bg-card-bg p-4 md:p-6 rounded-2xl border border-white/5 space-y-4"
+                  >
+                    <div className="flex flex-col md:flex-row justify-between items-start gap-6">
+                      <div className="flex-1 w-full space-y-4">
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                              Author
+                            </label>
+                            <input
+                              type="text"
+                              value={post.user}
+                              onChange={(e) => {
+                                const newPosts = [...data!.socialPosts];
+                                newPosts[pIdx].user = e.target.value;
+                                setData({ ...data!, socialPosts: newPosts });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-bold focus:border-neon-blue outline-none"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                              Date
+                            </label>
+                            <input
+                              type="text"
+                              value={post.time}
+                              onChange={(e) => {
+                                const newPosts = [...data!.socialPosts];
+                                newPosts[pIdx].time = e.target.value;
+                                setData({ ...data!, socialPosts: newPosts });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm focus:border-neon-blue outline-none"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                            Caption / Message
+                          </label>
+                          <textarea
+                            value={post.msg}
+                            onChange={(e) => {
+                              const newPosts = [...data!.socialPosts];
+                              newPosts[pIdx].msg = e.target.value;
+                              setData({ ...data!, socialPosts: newPosts });
+                            }}
+                            className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-base md:text-sm h-24 focus:outline-none focus:border-neon-blue"
+                            placeholder="What's happening?"
+                          />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div>
+                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                              Image URL
+                            </label>
+                            <input
+                              type="text"
+                              value={post.image}
+                              onChange={(e) => {
+                                const newPosts = [...data!.socialPosts];
+                                newPosts[pIdx].image = e.target.value;
+                                setData({ ...data!, socialPosts: newPosts });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
+                              placeholder="https://..."
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                              External Link (Optional)
+                            </label>
+                            <input
+                              type="text"
+                              value={post.url}
+                              onChange={(e) => {
+                                const newPosts = [...data!.socialPosts];
+                                newPosts[pIdx].url = e.target.value;
+                                setData({ ...data!, socialPosts: newPosts });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
+                              placeholder="#"
+                            />
+                          </div>
+                        </div>
+                      </div>
+                      <div className="w-full md:w-auto md:ml-6 flex flex-row md:flex-col items-center justify-between md:justify-start gap-4">
+                        <div className="w-full md:w-32 aspect-video bg-black rounded-lg border border-white/10 overflow-hidden flex items-center justify-center">
+                          {post.image ? (
+                            <img
+                              src={post.image}
+                              alt="Preview"
+                              className="max-w-full max-h-full object-contain"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-white/10">
+                              <ImageIcon size={24} />
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          onClick={() => {
+                            const newPosts = (data!.socialPosts || []).filter(
+                              (_, i) => i !== pIdx,
+                            );
+                            setData({ ...data!, socialPosts: newPosts });
+                          }}
+                          className="p-3 md:p-0 text-white/20 hover:text-neon-red transition-colors bg-white/5 md:bg-transparent rounded-lg"
+                        >
+                          <Trash2 size={24} className="md:w-5 md:h-5" />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="space-y-6 pt-12 border-t border-white/10">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-3">
+                  <div className="p-3 bg-neon-red/20 rounded-xl">
+                    <MessageSquare className="text-neon-red" size={24} />
+                  </div>
+                  <div>
+                    <h2 className="text-3xl font-display">Trash Talk Corner</h2>
+                    <p className="text-xs text-white/40 font-mono">
+                      Manage the community banter messages
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() =>
+                    setData({
+                      ...data!,
+                      socialMessages: [
+                        { user: "Admin", msg: "New message", time: "Just now" },
+                        ...(data!.socialMessages || []),
+                      ],
+                    })
+                  }
+                  className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-xs font-mono uppercase flex items-center gap-2"
+                >
+                  <Plus size={14} /> Add Message
+                </button>
+              </div>
+
+              <div className="space-y-4">
+                {(data.socialMessages || []).map((msg, mIdx) => (
+                  <div
+                    key={mIdx}
+                    className="bg-card-bg p-4 rounded-xl border border-white/5 space-y-3"
+                  >
+                    <div className="flex justify-between items-start md:items-center gap-4">
+                      <div className="flex flex-col md:flex-row gap-2 md:gap-4 flex-1">
+                        <input
+                          type="text"
+                          value={msg.user}
+                          onChange={(e) => {
+                            const newMsgs = [...data.socialMessages];
+                            newMsgs[mIdx].user = e.target.value;
+                            setData({ ...data, socialMessages: newMsgs });
+                          }}
+                          className="bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-bold text-neon-blue focus:border-neon-blue outline-none"
+                          placeholder="User"
+                        />
+                        <input
+                          type="text"
+                          value={msg.time}
+                          onChange={(e) => {
+                            const newMsgs = [...data.socialMessages];
+                            newMsgs[mIdx].time = e.target.value;
+                            setData({ ...data, socialMessages: newMsgs });
+                          }}
+                          className="bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-[10px] focus:border-neon-blue outline-none"
+                          placeholder="Time (e.g. 2h ago)"
+                        />
+                      </div>
+                      <button
+                        onClick={() => {
+                          const newMsgs = (data.socialMessages || []).filter(
+                            (_, i) => i !== mIdx,
+                          );
+                          setData({ ...data, socialMessages: newMsgs });
+                        }}
+                        className="p-3 md:p-0 text-white/20 hover:text-neon-red bg-white/5 md:bg-transparent rounded-lg"
+                      >
+                        <Trash2 size={20} />
+                      </button>
+                    </div>
+                    <textarea
+                      value={msg.msg}
+                      onChange={(e) => {
+                        const newMsgs = [...data.socialMessages];
+                        newMsgs[mIdx].msg = e.target.value;
+                        setData({ ...data, socialMessages: newMsgs });
+                      }}
+                      className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-base md:text-sm h-20 focus:outline-none focus:border-neon-red"
+                      placeholder="Message content..."
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+};

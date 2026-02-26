@@ -1,0 +1,421 @@
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Timer, Users, MapPin, Calendar, Clock, Wallet, X } from 'lucide-react';
+import { UpcomingGame } from '../types';
+import { cn } from '../lib/utils';
+import { format } from 'date-fns';
+import { db } from '../lib/firebase';
+import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+
+interface HeroProps {
+  game: UpcomingGame;
+  onRefresh: () => void;
+}
+
+export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
+  const [timeLeft, setTimeLeft] = useState({
+    days: 0,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+  });
+  const [showPlayers, setShowPlayers] = useState(false);
+  const [showReserveModal, setShowReserveModal] = useState(false);
+  const [formData, setFormData] = useState({
+    firstName: '',
+    lastName: '',
+    age: '',
+    positions: [] as number[],
+  });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isSuccess, setIsSuccess] = useState(false);
+
+  useEffect(() => {
+    const target = new Date(game.date).getTime();
+    const interval = setInterval(() => {
+      const now = new Date().getTime();
+      const distance = target - now;
+
+      if (distance < 0) {
+        clearInterval(interval);
+        return;
+      }
+
+      setTimeLeft({
+        days: Math.floor(distance / (1000 * 60 * 60 * 24)),
+        hours: Math.floor((distance % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60)),
+        minutes: Math.floor((distance % (1000 * 60 * 60)) / (1000 * 60)),
+        seconds: Math.floor((distance % (1000 * 60)) / 1000),
+      });
+    }, 1000);
+
+    return () => clearInterval(interval);
+  }, [game.date]);
+
+  const togglePosition = (pos: number) => {
+    setFormData(prev => {
+      if (prev.positions.includes(pos)) {
+        return { ...prev, positions: prev.positions.filter(p => p !== pos) };
+      }
+      if (prev.positions.length < 2) {
+        return { ...prev, positions: [...prev.positions, pos] };
+      }
+      return prev;
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    
+    try {
+      const newReservation = {
+        id: Math.random().toString(36).substr(2, 9),
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        age: parseInt(formData.age),
+        positions: formData.positions,
+        timestamp: new Date().toISOString()
+      };
+
+      // Update Firestore directly
+      const docRef = doc(db, "settings", "app_data");
+      await updateDoc(docRef, {
+        "upcomingGame.pendingReservations": arrayUnion(newReservation)
+      });
+
+      setIsSubmitting(false);
+      setIsSuccess(true);
+      onRefresh();
+      
+      // We don't auto-close immediately so they can read the message
+      setTimeout(() => {
+        setShowReserveModal(false);
+        setIsSuccess(false);
+        setFormData({ firstName: '', lastName: '', age: '', positions: [] });
+      }, 8000); // 8 seconds to read the important message
+    } catch (error) {
+      console.error(error);
+      alert('Error reserving slot. Please try again.');
+      setIsSubmitting(false);
+    }
+  };
+
+  const actualFilledSlots = (game.reservedPlayers || []).length;
+  const progress = (actualFilledSlots / (game.totalSlots || 1)) * 100;
+  const gameDate = new Date(game.date || new Date().toISOString());
+
+  return (
+    <section className="relative min-h-[80vh] flex flex-col items-center justify-center px-4 py-20 overflow-hidden">
+      {/* Background Elements */}
+      <div className="absolute inset-0 z-0">
+        <div className="absolute top-1/4 -left-20 w-96 h-96 bg-neon-blue/10 rounded-full blur-[120px]" />
+        <div className="absolute bottom-1/4 -right-20 w-96 h-96 bg-neon-red/10 rounded-full blur-[120px]" />
+      </div>
+
+      <motion.div 
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        className="relative z-10 text-center max-w-4xl w-full pt-10"
+      >
+        <h1 className="text-4xl sm:text-6xl md:text-8xl mb-4 grungy-text italic leading-tight">
+          Next Mabisa Run
+        </h1>
+        
+        <div className="grid grid-cols-4 gap-2 md:gap-4 mb-8">
+          {[
+            { label: 'Days', value: timeLeft.days },
+            { label: 'Hrs', value: timeLeft.hours },
+            { label: 'Min', value: timeLeft.minutes },
+            { label: 'Sec', value: timeLeft.seconds },
+          ].map((item) => (
+            <div key={item.label} className="bg-card-bg/80 border border-white/10 p-2 md:p-4 rounded-xl backdrop-blur-sm">
+              <div className="text-xl sm:text-3xl md:text-5xl font-mono font-bold text-neon-blue">{item.value.toString().padStart(2, '0')}</div>
+              <div className="text-[8px] md:text-[10px] uppercase tracking-widest text-white/50">{item.label}</div>
+            </div>
+          ))}
+        </div>
+
+        <div className="bg-card-bg/90 border border-white/10 p-4 md:p-6 rounded-2xl mb-8 text-left">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 md:gap-6 mb-8">
+            <div className="flex items-center gap-3">
+              <div className="p-2 md:p-3 bg-neon-blue/20 rounded-lg shrink-0">
+                <MapPin className="text-neon-blue" size={20} />
+              </div>
+              <div>
+                <div className="text-[10px] md:text-sm text-white/50 uppercase tracking-wider">Location</div>
+                <div className="text-sm md:text-lg font-semibold">{game.location}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 md:p-3 bg-neon-red/20 rounded-lg shrink-0">
+                <Calendar className="text-neon-red" size={20} />
+              </div>
+              <div>
+                <div className="text-[10px] md:text-sm text-white/50 uppercase tracking-wider">Date & Time</div>
+                <div className="text-sm md:text-lg font-semibold">
+                  {format(gameDate, 'EEEE, MMM dd')}
+                  <br />
+                  <span className="text-neon-blue">{game.timeRange || format(gameDate, 'hh:mm a')}</span>
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 md:p-3 bg-yellow-500/20 rounded-lg shrink-0">
+                <Wallet className="text-yellow-500" size={20} />
+              </div>
+              <div>
+                <div className="text-[10px] md:text-sm text-white/50 uppercase tracking-wider">Entrance Fee</div>
+                <div className="text-sm md:text-lg font-semibold">₱{game.entranceFee}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="p-2 md:p-3 bg-green-500/20 rounded-lg shrink-0">
+                <Users className="text-green-500" size={20} />
+              </div>
+              <div>
+                <div className="text-[10px] md:text-sm text-white/50 uppercase tracking-wider">Slots Left</div>
+                <div className="text-sm md:text-lg font-semibold">{(game.totalSlots || 0) - actualFilledSlots} / {game.totalSlots}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex justify-between text-xs uppercase tracking-widest font-bold">
+                <span>Registration Progress</span>
+                <span className={cn(progress > 80 ? "text-neon-red" : "text-neon-blue")}>
+                  {Math.round(progress)}% Full
+                </span>
+              </div>
+              <div className="h-3 bg-white/5 rounded-full overflow-hidden border border-white/10">
+                <motion.div 
+                  initial={{ width: 0 }}
+                  animate={{ width: `${progress}%` }}
+                  className={cn(
+                    "h-full transition-colors duration-500",
+                    progress > 80 ? "bg-neon-red shadow-[0_0_15px_rgba(255,0,68,0.5)]" : "bg-neon-blue shadow-[0_0_15px_rgba(0,242,255,0.5)]"
+                  )}
+                />
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => setShowPlayers(true)}
+              className="w-full py-2 border border-white/10 rounded-lg text-xs uppercase tracking-widest font-bold hover:bg-white/5 transition-colors flex items-center justify-center gap-2"
+            >
+              <Users size={14} />
+              View Players List
+            </button>
+          </div>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-4 justify-center">
+          <button 
+            onClick={() => setShowReserveModal(true)}
+            className="px-8 py-4 bg-neon-blue text-black font-display text-xl rounded-xl hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,242,255,0.4)]"
+          >
+            Reserve My Slot
+          </button>
+        </div>
+      </motion.div>
+
+      {/* Players List Modal */}
+      <AnimatePresence>
+        {showPlayers && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => setShowPlayers(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-card-bg border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <h3 className="text-2xl font-display">Reserved Players</h3>
+                <button 
+                  onClick={() => setShowPlayers(false)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                >
+                  <X size={20} />
+                </button>
+              </div>
+              <div className="p-6 max-h-[60vh] overflow-y-auto">
+                <div className="grid grid-cols-1 gap-2">
+                  {(game.reservedPlayers || []).map((player, index) => (
+                    <div 
+                      key={index}
+                      className="flex items-center justify-between p-3 bg-white/5 rounded-xl border border-white/5"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="w-8 h-8 bg-neon-blue/20 rounded-full flex items-center justify-center text-neon-blue font-mono text-xs font-bold">
+                          {index + 1}
+                        </div>
+                        <span className="font-semibold">{player.firstName} {player.lastName}</span>
+                      </div>
+                      <div className="flex gap-1">
+                        {(player.positions || []).map(pos => (
+                          <span 
+                            key={pos}
+                            className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-bold text-white/60 uppercase border border-white/5"
+                          >
+                            {pos === 1 ? 'PG' : pos === 2 ? 'SG' : pos === 3 ? 'SF' : pos === 4 ? 'PF' : 'C'}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div className="p-6 border-t border-white/10 bg-white/5 text-center">
+                <div className="text-xs text-white/40 uppercase tracking-widest">
+                  {(game.totalSlots || 0) - actualFilledSlots} Slots Remaining
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
+      {/* Reservation Modal */}
+      <AnimatePresence>
+        {showReserveModal && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4">
+            <motion.div 
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              onClick={() => !isSubmitting && setShowReserveModal(false)}
+              className="absolute inset-0 bg-black/80 backdrop-blur-sm"
+            />
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.9, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 20 }}
+              className="relative w-full max-w-md bg-card-bg border border-white/10 rounded-3xl overflow-hidden shadow-2xl"
+            >
+              <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5">
+                <h3 className="text-2xl font-display">Reserve Your Slot</h3>
+                <button 
+                  onClick={() => setShowReserveModal(false)}
+                  className="p-2 hover:bg-white/10 rounded-full transition-colors"
+                  disabled={isSubmitting}
+                >
+                  <X size={20} />
+                </button>
+              </div>
+
+              <div className="p-6">
+                {isSuccess ? (
+                  <motion.div 
+                    initial={{ scale: 0.8, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="py-12 text-center space-y-4"
+                  >
+                    <div className="w-20 h-20 bg-green-500/20 text-green-500 rounded-full flex items-center justify-center mx-auto border border-green-500/50">
+                      <Users size={40} />
+                    </div>
+                    <h4 className="text-2xl font-display text-green-500">Reservation Received!</h4>
+                    <p className="text-white/80 font-medium">
+                      We already received your reservation, {formData.firstName}!
+                    </p>
+                    <div className="bg-white/5 border border-white/10 p-4 rounded-xl text-xs text-white/60 space-y-2">
+                      <p>Make sure that you are already paid to see your name on the list.</p>
+                      <p className="text-neon-blue font-bold uppercase tracking-wider">Please contact the admins if not yet paid.</p>
+                    </div>
+                    <button 
+                      onClick={() => setShowReserveModal(false)}
+                      className="text-[10px] uppercase tracking-widest text-white/30 hover:text-white transition-colors pt-4"
+                    >
+                      Close Window
+                    </button>
+                  </motion.div>
+                ) : (
+                  <form onSubmit={handleSubmit} className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">First Name</label>
+                        <input 
+                          required
+                          type="text"
+                          value={formData.firstName}
+                          onChange={e => setFormData({ ...formData, firstName: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                          placeholder="Juan"
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Last Name</label>
+                        <input 
+                          required
+                          type="text"
+                          value={formData.lastName}
+                          onChange={e => setFormData({ ...formData, lastName: e.target.value })}
+                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                          placeholder="Dela Cruz"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Age</label>
+                      <input 
+                        required
+                        type="number"
+                        min="15"
+                        max="60"
+                        value={formData.age}
+                        onChange={e => setFormData({ ...formData, age: e.target.value })}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                        placeholder="25"
+                      />
+                    </div>
+
+                    <div className="space-y-3">
+                      <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
+                        Positions (Select up to 2)
+                      </label>
+                      <div className="grid grid-cols-5 gap-2">
+                        {[1, 2, 3, 4, 5].map(pos => (
+                          <button
+                            key={pos}
+                            type="button"
+                            onClick={() => togglePosition(pos)}
+                            className={cn(
+                              "aspect-square rounded-xl border flex flex-col items-center justify-center transition-all",
+                              formData.positions.includes(pos)
+                                ? "bg-neon-blue border-neon-blue text-black shadow-[0_0_10px_rgba(0,242,255,0.4)]"
+                                : "bg-white/5 border-white/10 text-white/60 hover:border-white/20"
+                            )}
+                          >
+                            <span className="text-lg font-display">{pos}</span>
+                            <span className="text-[8px] font-bold uppercase">
+                              {pos === 1 ? 'PG' : pos === 2 ? 'SG' : pos === 3 ? 'SF' : pos === 4 ? 'PF' : 'C'}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <button 
+                      disabled={isSubmitting || formData.positions.length === 0}
+                      className="w-full py-4 bg-neon-blue text-black font-display text-xl rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-[0_0_20px_rgba(0,242,255,0.3)]"
+                    >
+                      {isSubmitting ? 'Processing...' : 'Confirm Reservation'}
+                    </button>
+                  </form>
+                )}
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </section>
+  );
+};
