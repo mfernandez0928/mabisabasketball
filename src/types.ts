@@ -15,10 +15,12 @@ export interface GameResult {
   id: string;
   date: string;
   teamWhite: {
+    name?: string;
     score: number;
     players: { name: string; pts: number }[];
   };
   teamBlue: {
+    name?: string;
     score: number;
     players: { name: string; pts: number }[];
   };
@@ -35,17 +37,17 @@ export interface UpcomingGame {
   filledSlots: number;
   entranceFee: string;
   timeRange?: string;
-  reservedPlayers: { 
-    firstName: string; 
-    lastName: string; 
-    age: number; 
-    positions: number[] 
+  reservedPlayers: {
+    firstName: string;
+    lastName: string;
+    age: number;
+    positions: number[];
   }[];
-  pendingReservations?: { 
+  pendingReservations?: {
     id: string;
-    firstName: string; 
-    lastName: string; 
-    age: number; 
+    firstName: string;
+    lastName: string;
+    age: number;
     positions: number[];
     timestamp: string;
   }[];
@@ -56,6 +58,13 @@ export interface AppData {
   games: GameResult[];
   upcomingGame: UpcomingGame;
   socialMessages: { user: string; msg: string; time: string }[];
-  socialPosts: { id: string; user: string; msg: string; time: string; image?: string; url: string }[];
+  socialPosts: {
+    id: string;
+    user: string;
+    msg: string;
+    time: string;
+    image?: string;
+    url: string;
+  }[];
   mvpDescription?: string;
 }

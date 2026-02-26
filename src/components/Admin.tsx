@@ -50,7 +50,6 @@ export const Admin: React.FC = () => {
     const token = localStorage.getItem("admin-token");
     if (token) setIsLoggedIn(true);
 
-    // Use real-time listener for admin too
     const unsub = onSnapshot(
       doc(db, "settings", "app_data"),
       (docSnap) => {
@@ -79,7 +78,6 @@ export const Admin: React.FC = () => {
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    // Simple client-side check for now, or keep the server route for auth
     if (password === "mabisa@2026!") {
       localStorage.setItem("admin-token", "admin-token-123");
       setIsLoggedIn(true);
@@ -103,10 +101,8 @@ export const Admin: React.FC = () => {
 
       const reservation = pending[reservationIndex];
 
-      // Deep clone to avoid mutation issues
       const newData = JSON.parse(JSON.stringify(data));
 
-      // Ensure arrays exist
       if (!newData.upcomingGame) newData.upcomingGame = {};
       if (!newData.upcomingGame.pendingReservations)
         newData.upcomingGame.pendingReservations = [];
@@ -114,7 +110,6 @@ export const Admin: React.FC = () => {
         newData.upcomingGame.reservedPlayers = [];
       if (!newData.players) newData.players = [];
 
-      // Remove from pending
       newData.upcomingGame.pendingReservations.splice(reservationIndex, 1);
 
       // Add to reserved
@@ -329,7 +324,7 @@ export const Admin: React.FC = () => {
   if (!data)
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center text-white font-mono">
-        Loading...
+        Mabisa Loading...
       </div>
     );
 
@@ -886,10 +881,17 @@ export const Admin: React.FC = () => {
 
                   <div className="grid grid-cols-2 gap-8">
                     <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-mono text-white/40 uppercase">
-                          Team White
-                        </span>
+                      <div className="flex justify-between items-center gap-2">
+                        <input
+                          type="text"
+                          value={game.teamWhite?.name || "Team White"}
+                          onChange={(e) => {
+                            const newGames = [...(data.games || [])];
+                            newGames[gIdx].teamWhite.name = e.target.value;
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="flex-1 bg-transparent border-b border-white/10 text-xs font-mono text-white/40 uppercase focus:border-neon-blue outline-none"
+                        />
                         <input
                           type="number"
                           value={game.teamWhite?.score || 0}
@@ -905,10 +907,17 @@ export const Admin: React.FC = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-mono text-white/40 uppercase">
-                          Team Blue
-                        </span>
+                      <div className="flex justify-between items-center gap-2">
+                        <input
+                          type="text"
+                          value={game.teamBlue?.name || "Team Blue"}
+                          onChange={(e) => {
+                            const newGames = [...(data.games || [])];
+                            newGames[gIdx].teamBlue.name = e.target.value;
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="flex-1 bg-transparent border-b border-white/10 text-xs font-mono text-white/40 uppercase focus:border-neon-red outline-none"
+                        />
                         <input
                           type="number"
                           value={game.teamBlue?.score || 0}
@@ -926,20 +935,66 @@ export const Admin: React.FC = () => {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-mono text-white/40 uppercase mb-1">
-                      MVP Name
-                    </label>
-                    <input
-                      type="text"
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-xs font-mono text-white/40 uppercase">
+                        MVP of the Game
+                      </label>
+                      <button
+                        onClick={() => {
+                          // Find player with most points across both teams in this game
+                          // Note: This requires the game to have player stats recorded in its own structure
+                          // Currently the game structure only has score and player names/pts
+                          const allGamePlayers = [
+                            ...(game.teamWhite?.players || []),
+                            ...(game.teamBlue?.players || []),
+                          ];
+                          if (allGamePlayers.length > 0) {
+                            const topPlayer = allGamePlayers.reduce(
+                              (prev, current) =>
+                                prev.pts > current.pts ? prev : current,
+                            );
+                            // Find the actual player ID from the global players list
+                            const actualPlayer = data.players.find(
+                              (p) =>
+                                p.name.toLowerCase() ===
+                                topPlayer.name.toLowerCase(),
+                            );
+                            if (actualPlayer) {
+                              const newGames = [...data.games];
+                              newGames[gIdx].mvpId = actualPlayer.id;
+                              setData({ ...data, games: newGames });
+                            } else {
+                              alert(
+                                `Could not find global profile for ${topPlayer.name}. Make sure they are in the Players list.`,
+                              );
+                            }
+                          } else {
+                            alert(
+                              "No player stats recorded for this game yet.",
+                            );
+                          }
+                        }}
+                        className="text-[10px] text-neon-blue hover:underline font-mono uppercase"
+                      >
+                        Auto-Select Top Scorer
+                      </button>
+                    </div>
+                    <select
                       value={game.mvpId}
                       onChange={(e) => {
                         const newGames = [...data.games];
                         newGames[gIdx].mvpId = e.target.value;
                         setData({ ...data, games: newGames });
                       }}
-                      className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm"
-                      placeholder="Enter MVP name"
-                    />
+                      className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm text-white"
+                    >
+                      <option value="">Select MVP Player</option>
+                      {data.players.map((p) => (
+                        <option key={p.id} value={p.id}>
+                          {p.name}
+                        </option>
+                      ))}
+                    </select>
                   </div>
                 </div>
               ))}

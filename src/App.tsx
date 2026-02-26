@@ -48,7 +48,27 @@ function MainSite({
     pendingReservations: [],
   };
 
-  const mvpPlayer = players.find((p) => p.id === games[0]?.mvpId) || players[0];
+  let mvpPlayer = players.find((p) => p.id === games[0]?.mvpId);
+
+  if (!mvpPlayer && games[0]) {
+    const allGamePlayers = [
+      ...(games[0].teamWhite?.players || []),
+      ...(games[0].teamBlue?.players || []),
+    ];
+    if (allGamePlayers.length > 0) {
+      const topScorerName = allGamePlayers.reduce((prev, curr) =>
+        prev.pts > curr.pts ? prev : curr,
+      ).name;
+      mvpPlayer = players.find(
+        (p) => p.name.toLowerCase() === topScorerName.toLowerCase(),
+      );
+    }
+  }
+
+  if (!mvpPlayer) {
+    mvpPlayer =
+      [...players].sort((a, b) => b.points - a.points)[0] || players[0];
+  }
 
   return (
     <div className="min-h-screen selection:bg-neon-blue selection:text-black">
@@ -112,7 +132,7 @@ function MainSite({
 
           {games.length > 0 && (
             <section id="stats">
-              <GameChart games={games} />
+              <GameChart games={games} players={players} />
             </section>
           )}
 
@@ -432,10 +452,7 @@ export default function App() {
       });
   }, []);
 
-  const refreshData = useCallback(() => {
-    // With onSnapshot, data refreshes automatically,
-    // but we keep this for compatibility with child components
-  }, []);
+  const refreshData = useCallback(() => {}, []);
 
   if (loading) {
     return (
