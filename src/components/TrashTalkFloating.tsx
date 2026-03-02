@@ -53,7 +53,7 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
   };
 
   return (
-    <div className="fixed bottom-6 right-6 z-[100] flex flex-col items-end">
+    <div className="fixed bottom-32 md:bottom-6 right-6 z-[100] flex flex-col items-end">
       <AnimatePresence>
         {isOpen && (
           <motion.div
@@ -65,7 +65,7 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
               height: isMinimized ? "48px" : "450px",
             }}
             exit={{ opacity: 0, y: 20, scale: 0.95 }}
-            className="w-[320px] md:w-[380px] bg-card-bg border border-white/10 rounded-2xl shadow-2xl overflow-hidden mb-4 flex flex-col backdrop-blur-xl"
+            className="w-[280px] md:w-[380px] bg-card-bg border border-white/10 rounded-2xl shadow-2xl overflow-hidden mb-4 flex flex-col backdrop-blur-xl"
           >
             {/* Header */}
             <div className="p-3 flex items-center justify-between border-b border-white/10 bg-neon-red/10">

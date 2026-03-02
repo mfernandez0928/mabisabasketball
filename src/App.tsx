@@ -14,6 +14,7 @@ import { GameChart } from "./components/GameChart";
 import { Leaderboard } from "./components/Leaderboard";
 import { SocialWall } from "./components/SocialWall";
 import { TrashTalkFloating } from "./components/TrashTalkFloating";
+import { MobileNavbar } from "./components/MobileNavbar";
 import { Admin } from "./components/Admin";
 import { Logo } from "./components/Logo";
 import { PlayerStats, GameResult, UpcomingGame } from "./types";
@@ -150,7 +151,11 @@ function MainSite({
             </section>
           )}
 
-          {players.length > 0 && <Leaderboard players={players} />}
+          {players.length > 0 && (
+            <section id="leaderboard">
+              <Leaderboard players={players} />
+            </section>
+          )}
 
           <section id="social">
             <SocialWall
@@ -404,6 +409,7 @@ function MainSite({
         )}
       </AnimatePresence>
       <TrashTalkFloating messages={data.socialMessages || []} />
+      <MobileNavbar />
     </div>
   );
 }
