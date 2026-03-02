@@ -7,13 +7,22 @@ import * as htmlToImage from "html-to-image";
 interface MVPSpotlightProps {
   player: PlayerStats;
   description?: string;
+  stats?: { pts: number; reb: number; ast: number };
 }
 
 export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
   player,
   description,
+  stats,
 }) => {
   const cardRef = useRef<HTMLDivElement>(null);
+
+  // Use game stats if provided, otherwise fallback to season stats
+  const displayStats = stats || {
+    pts: player.points,
+    reb: player.rebounds,
+    ast: player.assists,
+  };
 
   const handleShare = async () => {
     if (!cardRef.current) return;
@@ -105,7 +114,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                 <div className="p-6 grid grid-cols-3 gap-4 border-t border-white/10 bg-black/40 backdrop-blur-md">
                   <div className="text-center">
                     <div className="text-2xl font-display text-neon-blue">
-                      {player.points}
+                      {displayStats.pts}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
                       PTS
@@ -113,7 +122,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-display text-white">
-                      {player.rebounds}
+                      {displayStats.reb}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
                       REB
@@ -121,7 +130,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-display text-neon-red">
-                      {player.assists}
+                      {displayStats.ast}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
                       AST

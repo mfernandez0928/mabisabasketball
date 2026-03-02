@@ -48,20 +48,41 @@ function MainSite({
     pendingReservations: [],
   };
 
-  let mvpPlayer = players.find((p) => p.id === games[0]?.mvpId);
+  const latestGame = games[0];
+  let mvpPlayer = players.find((p) => p.id === latestGame?.mvpId);
+  let mvpGameStats: { pts: number; reb: number; ast: number } | undefined =
+    undefined;
 
-  if (!mvpPlayer && games[0]) {
+  if (mvpPlayer && latestGame) {
     const allGamePlayers = [
-      ...(games[0].teamWhite?.players || []),
-      ...(games[0].teamBlue?.players || []),
+      ...(latestGame.teamWhite?.players || []),
+      ...(latestGame.teamBlue?.players || []),
+    ];
+    const stats = allGamePlayers.find(
+      (p) => p.name.toLowerCase() === mvpPlayer?.name.toLowerCase(),
+    );
+    if (stats) {
+      mvpGameStats = { pts: stats.pts, reb: stats.reb, ast: stats.ast };
+    }
+  }
+
+  if (!mvpPlayer && latestGame) {
+    const allGamePlayers = [
+      ...(latestGame.teamWhite?.players || []),
+      ...(latestGame.teamBlue?.players || []),
     ];
     if (allGamePlayers.length > 0) {
-      const topScorerName = allGamePlayers.reduce((prev, curr) =>
+      const topScorer = allGamePlayers.reduce((prev, curr) =>
         prev.pts > curr.pts ? prev : curr,
-      ).name;
-      mvpPlayer = players.find(
-        (p) => p.name.toLowerCase() === topScorerName.toLowerCase(),
       );
+      mvpPlayer = players.find(
+        (p) => p.name.toLowerCase() === topScorer.name.toLowerCase(),
+      );
+      mvpGameStats = {
+        pts: topScorer.pts,
+        reb: topScorer.reb,
+        ast: topScorer.ast,
+      };
     }
   }
 
@@ -136,11 +157,12 @@ function MainSite({
             </section>
           )}
 
-          {mvpPlayer && (
+          {mvpPlayer && games.length > 0 && (
             <section id="mvp">
               <MVPSpotlight
                 player={mvpPlayer}
                 description={data.mvpDescription}
+                stats={mvpGameStats}
               />
             </section>
           )}

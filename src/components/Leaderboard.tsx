@@ -7,13 +7,13 @@ interface LeaderboardProps {
 }
 
 export const Leaderboard: React.FC<LeaderboardProps> = ({ players }) => {
-  const sortedPlayers = [...(players || [])].sort((a, b) => b.mvps - a.mvps);
+  const sortedPlayers = [...(players || [])].sort((a, b) => b.points - a.points);
 
   return (
     <section className="py-20 px-4">
       <div className="max-w-4xl mx-auto">
         <h2 className="text-4xl md:text-6xl mb-12 text-center grungy-text italic">
-          Season Leaders
+          Game Leaders
         </h2>
 
         <div className="bg-card-bg border border-white/10 rounded-3xl overflow-hidden">
@@ -23,9 +23,9 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ players }) => {
                 <tr className="bg-white/5 border-bottom border-white/10">
                   <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40">Rank</th>
                   <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40">Player</th>
-                  <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40 text-center">Wins</th>
-                  <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40 text-center">MVPs</th>
-                  <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40 text-right">Eff</th>
+                  <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40 text-center">PTS</th>
+                  <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40 text-center">AST</th>
+                  <th className="p-3 md:p-6 text-[10px] md:text-xs uppercase tracking-widest text-white/40 text-right">REB</th>
                 </tr>
               </thead>
               <tbody>
@@ -50,15 +50,10 @@ export const Leaderboard: React.FC<LeaderboardProps> = ({ players }) => {
                         <span className="font-bold text-xs md:text-base">{player.name}</span>
                       </div>
                     </td>
-                    <td className="p-3 md:p-6 text-center font-mono text-xs md:text-base">{player.wins}</td>
-                    <td className="p-3 md:p-6 text-center">
-                      <div className="inline-flex items-center gap-1 md:gap-2 px-2 md:px-3 py-0.5 md:py-1 bg-yellow-500/10 text-yellow-500 rounded-full border border-yellow-500/20">
-                        <Trophy size={10} className="md:w-[14px] md:h-[14px]" />
-                        <span className="font-mono font-bold text-[10px] md:text-base">{player.mvps}</span>
-                      </div>
-                    </td>
+                    <td className="p-3 md:p-6 text-center font-mono text-xs md:text-base">{player.points}</td>
+                    <td className="p-3 md:p-6 text-center font-mono text-xs md:text-base">{player.assists}</td>
                     <td className="p-3 md:p-6 text-right font-mono text-neon-blue text-xs md:text-base">
-                      {((player.points + player.rebounds + player.assists) / 3).toFixed(1)}
+                      {player.rebounds}
                     </td>
                   </tr>
                 ))}

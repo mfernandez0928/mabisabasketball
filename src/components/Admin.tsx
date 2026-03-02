@@ -905,6 +905,97 @@ export const Admin: React.FC = () => {
                           className="w-16 bg-black border border-white/10 rounded px-2 py-1 text-center font-display"
                         />
                       </div>
+                      {/* Team White Players */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
+                            Players & Stats
+                          </span>
+                          <button
+                            onClick={() => {
+                              const newGames = [...data.games];
+                              newGames[gIdx].teamWhite.players.push({
+                                name: "",
+                                pts: 0,
+                                reb: 0,
+                                ast: 0,
+                              });
+                              setData({ ...data, games: newGames });
+                            }}
+                            className="text-[10px] text-neon-blue hover:underline font-mono uppercase"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                        {game.teamWhite.players.map((p, pIdx) => (
+                          <div key={pIdx} className="flex gap-1 items-center">
+                            <input
+                              type="text"
+                              value={p.name}
+                              placeholder="Name"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamWhite.players[pIdx].name =
+                                  e.target.value;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
+                            />
+                            <input
+                              type="number"
+                              value={p.pts}
+                              placeholder="P"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamWhite.players[pIdx].pts =
+                                  parseInt(e.target.value) || 0;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
+                              title="Points"
+                            />
+                            <input
+                              type="number"
+                              value={p.reb}
+                              placeholder="R"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamWhite.players[pIdx].reb =
+                                  parseInt(e.target.value) || 0;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
+                              title="Rebounds"
+                            />
+                            <input
+                              type="number"
+                              value={p.ast}
+                              placeholder="A"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamWhite.players[pIdx].ast =
+                                  parseInt(e.target.value) || 0;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
+                              title="Assists"
+                            />
+                            <button
+                              onClick={() => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamWhite.players.splice(
+                                  pIdx,
+                                  1,
+                                );
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="text-white/20 hover:text-neon-red"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                     <div className="space-y-2">
                       <div className="flex justify-between items-center gap-2">
@@ -930,6 +1021,94 @@ export const Admin: React.FC = () => {
                           }}
                           className="w-16 bg-black border border-white/10 rounded px-2 py-1 text-center font-display"
                         />
+                      </div>
+                      {/* Team Blue Players */}
+                      <div className="space-y-2 pt-2">
+                        <div className="flex justify-between items-center">
+                          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
+                            Players & Stats
+                          </span>
+                          <button
+                            onClick={() => {
+                              const newGames = [...data.games];
+                              newGames[gIdx].teamBlue.players.push({
+                                name: "",
+                                pts: 0,
+                                reb: 0,
+                                ast: 0,
+                              });
+                              setData({ ...data, games: newGames });
+                            }}
+                            className="text-[10px] text-neon-blue hover:underline font-mono uppercase"
+                          >
+                            + Add
+                          </button>
+                        </div>
+                        {game.teamBlue.players.map((p, pIdx) => (
+                          <div key={pIdx} className="flex gap-1 items-center">
+                            <input
+                              type="text"
+                              value={p.name}
+                              placeholder="Name"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamBlue.players[pIdx].name =
+                                  e.target.value;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
+                            />
+                            <input
+                              type="number"
+                              value={p.pts}
+                              placeholder="P"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamBlue.players[pIdx].pts =
+                                  parseInt(e.target.value) || 0;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
+                              title="Points"
+                            />
+                            <input
+                              type="number"
+                              value={p.reb}
+                              placeholder="R"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamBlue.players[pIdx].reb =
+                                  parseInt(e.target.value) || 0;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
+                              title="Rebounds"
+                            />
+                            <input
+                              type="number"
+                              value={p.ast}
+                              placeholder="A"
+                              onChange={(e) => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamBlue.players[pIdx].ast =
+                                  parseInt(e.target.value) || 0;
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
+                              title="Assists"
+                            />
+                            <button
+                              onClick={() => {
+                                const newGames = [...data.games];
+                                newGames[gIdx].teamBlue.players.splice(pIdx, 1);
+                                setData({ ...data, games: newGames });
+                              }}
+                              className="text-white/20 hover:text-neon-red"
+                            >
+                              <Trash2 size={12} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   </div>

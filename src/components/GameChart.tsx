@@ -118,9 +118,13 @@ export const GameChart: React.FC<GameChartProps> = ({ games, players }) => {
                               <span className="text-sm font-medium">
                                 {p.name}
                               </span>
-                              <span className="font-mono text-neon-blue font-bold">
-                                {p.pts} PTS
-                              </span>
+                              <div className="flex gap-3 text-[10px] font-mono">
+                                <span className="text-neon-blue font-bold">
+                                  {p.pts}P
+                                </span>
+                                <span className="text-white/40">{p.reb}R</span>
+                                <span className="text-white/40">{p.ast}A</span>
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -141,9 +145,13 @@ export const GameChart: React.FC<GameChartProps> = ({ games, players }) => {
                               <span className="text-sm font-medium">
                                 {p.name}
                               </span>
-                              <span className="font-mono text-neon-red font-bold">
-                                {p.pts} PTS
-                              </span>
+                              <div className="flex gap-3 text-[10px] font-mono">
+                                <span className="text-neon-red font-bold">
+                                  {p.pts}P
+                                </span>
+                                <span className="text-white/40">{p.reb}R</span>
+                                <span className="text-white/40">{p.ast}A</span>
+                              </div>
                             </div>
                           ))}
                         </div>
