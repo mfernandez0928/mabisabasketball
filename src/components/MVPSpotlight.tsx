@@ -77,11 +77,11 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
 
         <div className="grid lg:grid-cols-2 gap-8 lg:gap-12 items-center">
           {/* Digital Trading Card */}
-          <div className="relative perspective-1000 max-w-md mx-auto w-full">
+          <div className="relative perspective-1000 max-w-lg mx-auto w-full">
             <motion.div
               ref={cardRef}
               whileHover={{ rotateY: 5, rotateX: -5 }}
-              className="relative aspect-[3/4] w-full group cursor-pointer"
+              className="relative aspect-[4/5] w-full group cursor-pointer"
             >
               <div className="absolute inset-0 bg-gradient-to-br from-neon-blue via-transparent to-neon-red opacity-20 group-hover:opacity-40 transition-opacity rounded-3xl" />
               <div className="absolute -inset-1 bg-gradient-to-r from-neon-blue to-neon-red rounded-3xl blur opacity-25 group-hover:opacity-50 transition-opacity" />
@@ -93,7 +93,9 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                     <div className="text-neon-blue font-mono text-sm tracking-tighter">
                       KING OF THE COURT
                     </div>
-                    <h3 className="text-3xl font-display">{player.name}</h3>
+                    <h3 className="text-4xl font-display uppercase tracking-tighter">
+                      {player.name}
+                    </h3>
                   </div>
                   <div className="bg-neon-red text-white px-3 py-1 rounded font-display text-xl -rotate-12 shadow-lg">
                     MVP
@@ -101,21 +103,21 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                 </div>
 
                 {/* Player Image */}
-                <div className="flex-1 relative overflow-hidden">
+                <div className="flex-1 relative overflow-hidden bg-black/40">
                   <img
                     src={player.image}
                     alt={player.name}
-                    className="w-full h-full object-cover grayscale group-hover:grayscale-0 transition-all duration-500 scale-110 group-hover:scale-100"
+                    className="w-full h-full object-contain grayscale group-hover:grayscale-0 transition-all duration-500"
                     referrerPolicy="no-referrer"
                     crossOrigin="anonymous"
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-card-bg via-transparent to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-card-bg/80 via-transparent to-transparent pointer-events-none" />
                 </div>
 
                 {/* Stats Bar */}
                 <div className="p-6 grid grid-cols-3 gap-4 border-t border-white/10 bg-black/40 backdrop-blur-md">
                   <div className="text-center">
-                    <div className="text-2xl md:text-3xl font-display text-neon-blue">
+                    <div className="text-3xl md:text-4xl font-display text-neon-blue">
                       {displayStats.pts}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
@@ -123,7 +125,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl md:text-3xl font-display text-white">
+                    <div className="text-3xl md:text-4xl font-display text-white">
                       {displayStats.reb}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
@@ -131,7 +133,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl md:text-3xl font-display text-neon-red">
+                    <div className="text-3xl md:text-4xl font-display text-neon-red">
                       {displayStats.stl}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
@@ -145,17 +147,17 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
 
           {/* Player Details & Actions */}
           <div className="space-y-8">
-            <div className="space-y-4">
-              <h3 className="text-3xl font-display text-neon-blue">
+            <div className="space-y-6">
+              <h3 className="text-4xl font-display text-neon-blue uppercase tracking-tighter">
                 Dominance on Display
               </h3>
-              <p className="text-white/70 leading-relaxed">
+              <p className="text-lg text-white/70 leading-relaxed">
                 {description ||
                   `${player.name} absolutely took over the last run. With a clinical performance from the perimeter and lockdown defense, he led his team to a decisive victory.`}
               </p>
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               <div className="bg-white/5 p-4 rounded-xl border border-white/10 flex items-center gap-4">
                 <div className="p-2 bg-yellow-500/20 rounded-lg">
                   <Trophy className="text-yellow-500" size={20} />
