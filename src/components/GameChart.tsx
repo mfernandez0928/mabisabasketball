@@ -118,12 +118,22 @@ export const GameChart: React.FC<GameChartProps> = ({ games, players }) => {
                               <span className="text-sm font-medium">
                                 {p.name}
                               </span>
-                              <div className="flex gap-3 text-[10px] font-mono">
-                                <span className="text-neon-blue font-bold">
+                              <div className="flex gap-2 text-[10px] font-mono">
+                                <span
+                                  className="text-neon-blue font-bold"
+                                  title="Points"
+                                >
                                   {p.pts}P
                                 </span>
-                                <span className="text-white/40">{p.reb}R</span>
-                                <span className="text-white/40">{p.ast}A</span>
+                                <span
+                                  className="text-white/40"
+                                  title="Rebounds"
+                                >
+                                  {p.reb}R
+                                </span>
+                                <span className="text-white/40" title="Steals">
+                                  {p.stl}S
+                                </span>
                               </div>
                             </div>
                           ))}
@@ -145,12 +155,22 @@ export const GameChart: React.FC<GameChartProps> = ({ games, players }) => {
                               <span className="text-sm font-medium">
                                 {p.name}
                               </span>
-                              <div className="flex gap-3 text-[10px] font-mono">
-                                <span className="text-neon-red font-bold">
+                              <div className="flex gap-2 text-[10px] font-mono">
+                                <span
+                                  className="text-neon-red font-bold"
+                                  title="Points"
+                                >
                                   {p.pts}P
                                 </span>
-                                <span className="text-white/40">{p.reb}R</span>
-                                <span className="text-white/40">{p.ast}A</span>
+                                <span
+                                  className="text-white/40"
+                                  title="Rebounds"
+                                >
+                                  {p.reb}R
+                                </span>
+                                <span className="text-white/40" title="Steals">
+                                  {p.stl}S
+                                </span>
                               </div>
                             </div>
                           ))}

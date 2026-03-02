@@ -919,6 +919,8 @@ export const Admin: React.FC = () => {
                                 pts: 0,
                                 reb: 0,
                                 ast: 0,
+                                stl: 0,
+                                blk: 0,
                               });
                               setData({ ...data, games: newGames });
                             }}
@@ -928,71 +930,104 @@ export const Admin: React.FC = () => {
                           </button>
                         </div>
                         {game.teamWhite.players.map((p, pIdx) => (
-                          <div key={pIdx} className="flex gap-1 items-center">
-                            <input
-                              type="text"
-                              value={p.name}
-                              placeholder="Name"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamWhite.players[pIdx].name =
-                                  e.target.value;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
-                            />
-                            <input
-                              type="number"
-                              value={p.pts}
-                              placeholder="P"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamWhite.players[pIdx].pts =
-                                  parseInt(e.target.value) || 0;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
-                              title="Points"
-                            />
-                            <input
-                              type="number"
-                              value={p.reb}
-                              placeholder="R"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamWhite.players[pIdx].reb =
-                                  parseInt(e.target.value) || 0;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
-                              title="Rebounds"
-                            />
-                            <input
-                              type="number"
-                              value={p.ast}
-                              placeholder="A"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamWhite.players[pIdx].ast =
-                                  parseInt(e.target.value) || 0;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
-                              title="Assists"
-                            />
-                            <button
-                              onClick={() => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamWhite.players.splice(
-                                  pIdx,
-                                  1,
-                                );
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="text-white/20 hover:text-neon-red"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                          <div
+                            key={pIdx}
+                            className="flex flex-col gap-1 p-2 bg-black/40 rounded border border-white/5"
+                          >
+                            <div className="flex gap-1 items-center">
+                              <input
+                                type="text"
+                                value={p.name}
+                                placeholder="Name"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players[pIdx].name =
+                                    e.target.value;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players.splice(
+                                    pIdx,
+                                    1,
+                                  );
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="text-white/20 hover:text-neon-red"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-5 gap-1">
+                              <input
+                                type="number"
+                                value={p.pts}
+                                placeholder="PTS"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players[pIdx].pts =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Points"
+                              />
+                              <input
+                                type="number"
+                                value={p.ast}
+                                placeholder="AST"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players[pIdx].ast =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Assists"
+                              />
+                              <input
+                                type="number"
+                                value={p.reb}
+                                placeholder="REB"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players[pIdx].reb =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Rebounds"
+                              />
+                              <input
+                                type="number"
+                                value={p.stl}
+                                placeholder="STL"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players[pIdx].stl =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Steals"
+                              />
+                              <input
+                                type="number"
+                                value={p.blk}
+                                placeholder="BLK"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamWhite.players[pIdx].blk =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Blocks"
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1036,6 +1071,8 @@ export const Admin: React.FC = () => {
                                 pts: 0,
                                 reb: 0,
                                 ast: 0,
+                                stl: 0,
+                                blk: 0,
                               });
                               setData({ ...data, games: newGames });
                             }}
@@ -1045,68 +1082,104 @@ export const Admin: React.FC = () => {
                           </button>
                         </div>
                         {game.teamBlue.players.map((p, pIdx) => (
-                          <div key={pIdx} className="flex gap-1 items-center">
-                            <input
-                              type="text"
-                              value={p.name}
-                              placeholder="Name"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamBlue.players[pIdx].name =
-                                  e.target.value;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
-                            />
-                            <input
-                              type="number"
-                              value={p.pts}
-                              placeholder="P"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamBlue.players[pIdx].pts =
-                                  parseInt(e.target.value) || 0;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
-                              title="Points"
-                            />
-                            <input
-                              type="number"
-                              value={p.reb}
-                              placeholder="R"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamBlue.players[pIdx].reb =
-                                  parseInt(e.target.value) || 0;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
-                              title="Rebounds"
-                            />
-                            <input
-                              type="number"
-                              value={p.ast}
-                              placeholder="A"
-                              onChange={(e) => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamBlue.players[pIdx].ast =
-                                  parseInt(e.target.value) || 0;
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="w-8 bg-black border border-white/10 rounded px-1 py-1 text-[10px] text-center"
-                              title="Assists"
-                            />
-                            <button
-                              onClick={() => {
-                                const newGames = [...data.games];
-                                newGames[gIdx].teamBlue.players.splice(pIdx, 1);
-                                setData({ ...data, games: newGames });
-                              }}
-                              className="text-white/20 hover:text-neon-red"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                          <div
+                            key={pIdx}
+                            className="flex flex-col gap-1 p-2 bg-black/40 rounded border border-white/5"
+                          >
+                            <div className="flex gap-1 items-center">
+                              <input
+                                type="text"
+                                value={p.name}
+                                placeholder="Name"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players[pIdx].name =
+                                    e.target.value;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
+                              />
+                              <button
+                                onClick={() => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players.splice(
+                                    pIdx,
+                                    1,
+                                  );
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="text-white/20 hover:text-neon-red"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                            <div className="grid grid-cols-5 gap-1">
+                              <input
+                                type="number"
+                                value={p.pts}
+                                placeholder="PTS"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players[pIdx].pts =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Points"
+                              />
+                              <input
+                                type="number"
+                                value={p.ast}
+                                placeholder="AST"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players[pIdx].ast =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Assists"
+                              />
+                              <input
+                                type="number"
+                                value={p.reb}
+                                placeholder="REB"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players[pIdx].reb =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Rebounds"
+                              />
+                              <input
+                                type="number"
+                                value={p.stl}
+                                placeholder="STL"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players[pIdx].stl =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Steals"
+                              />
+                              <input
+                                type="number"
+                                value={p.blk}
+                                placeholder="BLK"
+                                onChange={(e) => {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].teamBlue.players[pIdx].blk =
+                                    parseInt(e.target.value) || 0;
+                                  setData({ ...data, games: newGames });
+                                }}
+                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
+                                title="Blocks"
+                              />
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -1199,6 +1272,11 @@ export const Admin: React.FC = () => {
                         assists: 0,
                         steals: 0,
                         blocks: 0,
+                        fg2m: 0,
+                        fg3m: 0,
+                        oreb: 0,
+                        dreb: 0,
+                        gamesPlayed: 0,
                         mvps: 0,
                         wins: 0,
                         image: "https://picsum.photos/seed/new/800/1000",
@@ -1258,6 +1336,7 @@ export const Admin: React.FC = () => {
                       { label: "AST", key: "assists" },
                       { label: "STL", key: "steals" },
                       { label: "BLK", key: "blocks" },
+                      { label: "GP", key: "gamesPlayed" },
                       { label: "MVPs", key: "mvps" },
                       { label: "Wins", key: "wins" },
                     ].map((stat) => (

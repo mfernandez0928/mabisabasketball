@@ -6,9 +6,19 @@ export interface PlayerStats {
   assists: number;
   steals: number;
   blocks: number;
+  gamesPlayed: number;
   mvps: number;
   wins: number;
   image: string;
+}
+
+export interface GamePlayerStats {
+  name: string;
+  pts: number;
+  ast: number;
+  reb: number;
+  stl: number;
+  blk: number;
 }
 
 export interface GameResult {
@@ -17,12 +27,12 @@ export interface GameResult {
   teamWhite: {
     name?: string;
     score: number;
-    players: { name: string; pts: number; reb: number; ast: number }[];
+    players: GamePlayerStats[];
   };
   teamBlue: {
     name?: string;
     score: number;
-    players: { name: string; pts: number; reb: number; ast: number }[];
+    players: GamePlayerStats[];
   };
   mvpId: string;
   location: string;
@@ -37,17 +47,17 @@ export interface UpcomingGame {
   filledSlots: number;
   entranceFee: string;
   timeRange?: string;
-  reservedPlayers: { 
-    firstName: string; 
-    lastName: string; 
-    age: number; 
-    positions: number[] 
+  reservedPlayers: {
+    firstName: string;
+    lastName: string;
+    age: number;
+    positions: number[];
   }[];
-  pendingReservations?: { 
+  pendingReservations?: {
     id: string;
-    firstName: string; 
-    lastName: string; 
-    age: number; 
+    firstName: string;
+    lastName: string;
+    age: number;
     positions: number[];
     timestamp: string;
   }[];
@@ -58,6 +68,13 @@ export interface AppData {
   games: GameResult[];
   upcomingGame: UpcomingGame;
   socialMessages: { user: string; msg: string; time: string }[];
-  socialPosts: { id: string; user: string; msg: string; time: string; image?: string; url: string }[];
+  socialPosts: {
+    id: string;
+    user: string;
+    msg: string;
+    time: string;
+    image?: string;
+    url: string;
+  }[];
   mvpDescription?: string;
 }

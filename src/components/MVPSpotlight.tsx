@@ -22,6 +22,8 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
     pts: player.points,
     reb: player.rebounds,
     ast: player.assists,
+    stl: player.steals,
+    blk: player.blocks,
   };
 
   const handleShare = async () => {
@@ -113,7 +115,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                 {/* Stats Bar */}
                 <div className="p-6 grid grid-cols-3 gap-4 border-t border-white/10 bg-black/40 backdrop-blur-md">
                   <div className="text-center">
-                    <div className="text-2xl font-display text-neon-blue">
+                    <div className="text-2xl md:text-3xl font-display text-neon-blue">
                       {displayStats.pts}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
@@ -121,7 +123,7 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-display text-white">
+                    <div className="text-2xl md:text-3xl font-display text-white">
                       {displayStats.reb}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
@@ -129,11 +131,11 @@ export const MVPSpotlight: React.FC<MVPSpotlightProps> = ({
                     </div>
                   </div>
                   <div className="text-center">
-                    <div className="text-2xl font-display text-neon-red">
-                      {displayStats.ast}
+                    <div className="text-2xl md:text-3xl font-display text-neon-red">
+                      {displayStats.stl}
                     </div>
                     <div className="text-[10px] uppercase text-white/40 tracking-widest">
-                      AST
+                      STL
                     </div>
                   </div>
                 </div>

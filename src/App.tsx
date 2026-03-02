@@ -13,6 +13,7 @@ import { MVPSpotlight } from "./components/MVPSpotlight";
 import { GameChart } from "./components/GameChart";
 import { Leaderboard } from "./components/Leaderboard";
 import { SocialWall } from "./components/SocialWall";
+import { TrashTalkFloating } from "./components/TrashTalkFloating";
 import { Admin } from "./components/Admin";
 import { Logo } from "./components/Logo";
 import { PlayerStats, GameResult, UpcomingGame } from "./types";
@@ -50,8 +51,9 @@ function MainSite({
 
   const latestGame = games[0];
   let mvpPlayer = players.find((p) => p.id === latestGame?.mvpId);
-  let mvpGameStats: { pts: number; reb: number; ast: number } | undefined =
-    undefined;
+  let mvpGameStats:
+    | { pts: number; reb: number; ast: number; stl: number; blk: number }
+    | undefined = undefined;
 
   if (mvpPlayer && latestGame) {
     const allGamePlayers = [
@@ -62,7 +64,13 @@ function MainSite({
       (p) => p.name.toLowerCase() === mvpPlayer?.name.toLowerCase(),
     );
     if (stats) {
-      mvpGameStats = { pts: stats.pts, reb: stats.reb, ast: stats.ast };
+      mvpGameStats = {
+        pts: stats.pts,
+        reb: stats.reb,
+        ast: stats.ast,
+        stl: stats.stl,
+        blk: stats.blk,
+      };
     }
   }
 
@@ -395,6 +403,7 @@ function MainSite({
           </div>
         )}
       </AnimatePresence>
+      <TrashTalkFloating messages={data.socialMessages || []} />
     </div>
   );
 }
