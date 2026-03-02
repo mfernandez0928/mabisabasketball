@@ -66,31 +66,6 @@ function MainSite({
     }
   }
 
-  if (!mvpPlayer && latestGame) {
-    const allGamePlayers = [
-      ...(latestGame.teamWhite?.players || []),
-      ...(latestGame.teamBlue?.players || []),
-    ];
-    if (allGamePlayers.length > 0) {
-      const topScorer = allGamePlayers.reduce((prev, curr) =>
-        prev.pts > curr.pts ? prev : curr,
-      );
-      mvpPlayer = players.find(
-        (p) => p.name.toLowerCase() === topScorer.name.toLowerCase(),
-      );
-      mvpGameStats = {
-        pts: topScorer.pts,
-        reb: topScorer.reb,
-        ast: topScorer.ast,
-      };
-    }
-  }
-
-  if (!mvpPlayer) {
-    mvpPlayer =
-      [...players].sort((a, b) => b.points - a.points)[0] || players[0];
-  }
-
   return (
     <div className="min-h-screen selection:bg-neon-blue selection:text-black">
       {/* Navigation */}
