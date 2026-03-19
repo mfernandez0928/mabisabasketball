@@ -109,7 +109,9 @@ const INITIAL_DATA = {
     entranceFee: '₱250.00',
     reservedPlayers: [],
     pendingReservations: [],
+    pendingPayments: [],
   },
+  awards: [],
   socialMessages: [
     { user: 'Coach Mike', msg: 'Team Blue got lucky last night. We coming for that rematch!', time: '2h ago' },
     { user: 'J-Buckets', msg: 'Who wants to guard me next Friday? 🏀💨', time: '5h ago' },
@@ -193,7 +195,7 @@ async function startServer() {
   });
 
   app.post("/api/reserve", async (req, res) => {
-    const { firstName, lastName, age, positions } = req.body;
+    const { firstName, lastName, age, positions, paymentMethod, screenshotUrl } = req.body;
     const data: any = await readData();
     const newReservation = {
       id: Math.random().toString(36).substr(2, 9),
@@ -201,9 +203,21 @@ async function startServer() {
       lastName,
       age,
       positions,
+      paymentMethod,
+      screenshotUrl,
       timestamp: new Date().toISOString()
     };
-    data.upcomingGame.pendingReservations.push(newReservation);
+    
+    if (paymentMethod === 'GCash') {
+      data.upcomingGame.pendingPayments.push(newReservation);
+    } else {
+      // Cash goes to pendingReservations for admin to confirm at venue
+      if (!data.upcomingGame.pendingReservations) {
+        data.upcomingGame.pendingReservations = [];
+      }
+      data.upcomingGame.pendingReservations.push(newReservation);
+    }
+    
     await writeData(data);
     res.json({ status: "ok", reservation: newReservation });
   });
@@ -222,6 +236,7 @@ async function startServer() {
         age: reservation.age,
         positions: reservation.positions
       });
+      data.upcomingGame.filledSlots = (data.upcomingGame.filledSlots || 0) + 1;
 
       const fullName = `${reservation.firstName} ${reservation.lastName}`.trim();
       const playerExists = data.players.some((p: any) => p.name.toLowerCase() === fullName.toLowerCase());
@@ -253,6 +268,55 @@ async function startServer() {
       res.json({ status: "ok" });
     } else {
       res.status(404).json({ status: "error", message: "Reservation not found" });
+    }
+  });
+
+  app.post("/api/admin/confirm-payment", async (req, res) => {
+    const { id } = req.body;
+    const data: any = await readData();
+    const paymentIndex = data.upcomingGame.pendingPayments.findIndex((p: any) => p.id === id);
+    
+    if (paymentIndex > -1) {
+      const payment = data.upcomingGame.pendingPayments[paymentIndex];
+      data.upcomingGame.pendingPayments.splice(paymentIndex, 1);
+      data.upcomingGame.reservedPlayers.push({
+        firstName: payment.firstName,
+        lastName: payment.lastName,
+        age: payment.age,
+        positions: payment.positions
+      });
+      data.upcomingGame.filledSlots = (data.upcomingGame.filledSlots || 0) + 1;
+
+      const fullName = `${payment.firstName} ${payment.lastName}`.trim();
+      const playerExists = data.players.some((p: any) => p.name.toLowerCase() === fullName.toLowerCase());
+      
+      if (!playerExists) {
+        data.players.push({
+          id: 'p' + Math.random().toString(36).substr(2, 5),
+          name: fullName,
+          points: 0, rebounds: 0, assists: 0, steals: 0, blocks: 0, mvps: 0, wins: 0,
+          image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`
+        });
+      }
+
+      await writeData(data);
+      res.json({ status: "ok" });
+    } else {
+      res.status(404).json({ status: "error", message: "Payment not found" });
+    }
+  });
+
+  app.post("/api/admin/reject-payment", async (req, res) => {
+    const { id } = req.body;
+    const data: any = await readData();
+    const paymentIndex = data.upcomingGame.pendingPayments.findIndex((p: any) => p.id === id);
+    
+    if (paymentIndex > -1) {
+      data.upcomingGame.pendingPayments.splice(paymentIndex, 1);
+      await writeData(data);
+      res.json({ status: "ok" });
+    } else {
+      res.status(404).json({ status: "error", message: "Payment not found" });
     }
   });
 

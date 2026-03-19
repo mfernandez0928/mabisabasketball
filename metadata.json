@@ -1,6 +1,6 @@
 {
-  "name": "Mabisa",
-  "description": "The official hub for Mabisa Basketball. High-energy streetball, live stats, and community runs.",
+  "name": "Mabisa Basketball",
+  "description": "The official hub for Mabisa Basketball. Features player-only stats, awards system, and a streamlined reservation and payment flow.",
   "requestFramePermissions": [
     "geolocation",
     "camera"

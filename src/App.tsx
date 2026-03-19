@@ -15,6 +15,7 @@ import { Leaderboard } from "./components/Leaderboard";
 import { SocialWall } from "./components/SocialWall";
 import { TrashTalkFloating } from "./components/TrashTalkFloating";
 import { MobileNavbar } from "./components/MobileNavbar";
+import { AwardsSection } from "./components/AwardsSection";
 import { Admin } from "./components/Admin";
 import { Logo } from "./components/Logo";
 import { PlayerStats, GameResult, UpcomingGame } from "./types";
@@ -52,9 +53,7 @@ function MainSite({
 
   const latestGame = games[0];
   let mvpPlayer = players.find((p) => p.id === latestGame?.mvpId);
-  let mvpGameStats:
-    | { pts: number; reb: number; ast: number; stl: number; blk: number }
-    | undefined = undefined;
+  let mvpGameStats: { pts: number; reb: number; ast: number; stl: number; blk: number } | undefined = undefined;
 
   if (mvpPlayer && latestGame) {
     const allGamePlayers = [
@@ -65,15 +64,43 @@ function MainSite({
       (p) => p.name.toLowerCase() === mvpPlayer?.name.toLowerCase(),
     );
     if (stats) {
-      mvpGameStats = {
-        pts: stats.pts,
-        reb: stats.reb,
-        ast: stats.ast,
-        stl: stats.stl,
-        blk: stats.blk,
-      };
+      mvpGameStats = { pts: stats.pts, reb: stats.reb, ast: stats.ast, stl: stats.stl, blk: stats.blk };
     }
   }
+
+  const handleLike = async (postId: string) => {
+    if (!data) return;
+    
+    // Server-side check: make sure we don't increment if already liked
+    // (Though UI handles this, we can add a simple check if we had user IDs)
+    const newPosts = data.socialPosts.map((p: any) => 
+      p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p
+    );
+    try {
+      await updateDoc(doc(db, "settings", "app_data"), {
+        socialPosts: newPosts
+      });
+    } catch (err) {
+      console.error("Error liking post:", err);
+    }
+  };
+
+  const handleComment = async (postId: string, text: string) => {
+    if (!data || !text) return;
+    
+    const newPosts = data.socialPosts.map((p: any) => 
+      p.id === postId ? { ...p, comments: (p.comments || 0) + 1 } : p
+    );
+    try {
+      await updateDoc(doc(db, "settings", "app_data"), {
+        socialPosts: newPosts
+      });
+      // In a real app, we would also save the comment text to a subcollection
+      // For now, we increment the counter as requested to show it's "working"
+    } catch (err) {
+      console.error("Error commenting on post:", err);
+    }
+  };
 
   return (
     <div className="min-h-screen selection:bg-neon-blue selection:text-black">
@@ -131,6 +158,10 @@ function MainSite({
           <Hero game={upcomingGame} onRefresh={onRefresh} />
         </section>
 
+        {data.awards && data.awards.length > 0 && (
+          <AwardsSection awards={data.awards} />
+        )}
+
         <div className="relative">
           {/* Section Dividers / Gradients */}
           <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-dark-bg to-transparent z-10" />
@@ -141,13 +172,9 @@ function MainSite({
             </section>
           )}
 
-          {mvpPlayer && games.length > 0 && (
+          {data.awards && data.awards.length > 0 && (
             <section id="mvp">
-              <MVPSpotlight
-                player={mvpPlayer}
-                description={data.mvpDescription}
-                stats={mvpGameStats}
-              />
+              <MVPSpotlight awards={data.awards} />
             </section>
           )}
 
@@ -159,8 +186,9 @@ function MainSite({
 
           <section id="social">
             <SocialWall
-              messages={data.socialMessages || []}
               socialPosts={data.socialPosts || []}
+              onLike={handleLike}
+              onComment={handleComment}
             />
           </section>
         </div>

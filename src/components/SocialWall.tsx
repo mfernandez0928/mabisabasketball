@@ -1,154 +1,212 @@
-import React, { useState } from "react";
-import {
-  Instagram,
-  Facebook,
-  Video,
-  MessageSquare,
-  ExternalLink,
-  Send,
-} from "lucide-react";
-import { db } from "../lib/firebase";
-import { doc, updateDoc, arrayUnion } from "firebase/firestore";
-
-interface SocialPost {
-  id: string;
-  user: string;
-  msg: string;
-  time: string;
-  image?: string;
-  url: string;
-}
+import React, { useState, useEffect } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
+import { Heart, MessageCircle, Share2, MoreHorizontal, User, Send } from 'lucide-react';
+import { SocialPost } from '../types';
+import { formatDistanceToNow } from 'date-fns';
+import { safeParseDate } from '../lib/dateUtils';
 
 interface SocialWallProps {
-  messages: { user: string; msg: string; time: string }[];
   socialPosts: SocialPost[];
+  onLike?: (postId: string) => void;
+  onComment?: (postId: string, text: string) => void;
 }
 
-export const SocialWall: React.FC<SocialWallProps> = ({
-  messages,
-  socialPosts,
-}) => {
-  const [newMessage, setNewMessage] = useState("");
-  const [userName, setUserName] = useState("");
-  const [isSending, setIsSending] = useState(false);
+export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onComment }) => {
+  const [likedPosts, setLikedPosts] = useState<string[]>([]);
+  const [commentingId, setCommentingId] = useState<string | null>(null);
+  const [commentText, setCommentText] = useState("");
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newMessage.trim() || isSending) return;
-
-    setIsSending(true);
-    try {
-      const chatMessage = {
-        user: userName.trim() || "Anonymous Player",
-        msg: newMessage.trim(),
-        time: "Just now",
-      };
-
-      const appDataRef = doc(db, "settings", "app_data");
-      await updateDoc(appDataRef, {
-        socialMessages: arrayUnion(chatMessage),
-      });
-
-      setNewMessage("");
-    } catch (error) {
-      console.error("Error sending message:", error);
-      alert("Failed to send message. Please try again.");
-    } finally {
-      setIsSending(false);
+  useEffect(() => {
+    const savedLikes = localStorage.getItem('mabisa_likes');
+    if (savedLikes) {
+      setLikedPosts(JSON.parse(savedLikes));
     }
+  }, []);
+
+  const handleLikeClick = (postId: string) => {
+    if (likedPosts.includes(postId)) return;
+    
+    const newLikes = [...likedPosts, postId];
+    setLikedPosts(newLikes);
+    localStorage.setItem('mabisa_likes', JSON.stringify(newLikes));
+    onLike?.(postId);
+  };
+
+  const handleCommentSubmit = (postId: string) => {
+    if (!commentText.trim()) return;
+    onComment?.(postId, commentText);
+    setCommentText("");
+    setCommentingId(null);
+  };
+
+  const renderContentWithLinks = (content: string) => {
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    return content.split(urlRegex).map((part, i) => {
+      if (part.match(urlRegex)) {
+        return (
+          <a 
+            key={i} 
+            href={part} 
+            target="_blank" 
+            rel="noopener noreferrer" 
+            className="text-neon-blue hover:underline break-all"
+          >
+            {part}
+          </a>
+        );
+      }
+      return part;
+    });
   };
 
   return (
-    <section className="py-20 px-4 bg-black/50">
-      <div className="max-w-6xl mx-auto">
-        <h2 className="text-4xl md:text-6xl mb-12 text-center grungy-text italic">
-          The Social Feed
-        </h2>
+    <section className="py-20 px-4">
+      <div className="max-w-4xl mx-auto space-y-20">
+        <div className="text-center space-y-4">
+          <h2 className="text-5xl md:text-7xl grungy-text italic">The Community</h2>
+          <p className="text-white/40 font-mono text-sm uppercase tracking-widest">Hype from the court</p>
+        </div>
 
-        <div className="max-w-3xl mx-auto">
-          {/* Facebook Feed (Manual) */}
-          <div className="bg-card-bg border border-white/10 rounded-2xl overflow-hidden flex flex-col h-[600px] shadow-2xl backdrop-blur-md">
-            <div className="p-4 flex items-center justify-between border-b border-white/10 bg-[#1877F2]/10">
-              <div className="flex items-center gap-2">
-                <Facebook size={20} className="text-[#1877F2]" />
-                <span className="text-sm font-bold uppercase tracking-widest">
-                  Facebook Updates
-                </span>
-              </div>
-              <a
-                href="https://www.facebook.com/mabisabasketball"
-                target="_blank"
-                rel="noreferrer"
-                className="text-[10px] text-white/40 uppercase font-bold hover:text-white transition-colors"
+        <div className="grid grid-cols-1 gap-8">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="h-[1px] flex-1 bg-white/10" />
+            <h3 className="text-2xl font-display text-neon-blue italic">Social Feed</h3>
+            <div className="h-[1px] flex-1 bg-white/10" />
+          </div>
+          {socialPosts.map((post) => {
+            const isLiked = likedPosts.includes(post.id);
+            return (
+              <motion.div 
+                key={post.id}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="bg-card-bg/50 border border-white/5 rounded-3xl overflow-hidden shadow-2xl"
               >
-                Visit Page
-              </a>
-            </div>
-
-            <div className="flex-1 overflow-y-auto p-6 space-y-8 custom-scrollbar">
-              {socialPosts && socialPosts.length > 0 ? (
-                socialPosts.map((post) => (
-                  <div key={post.id} className="space-y-4 group">
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-full bg-[#1877F2]/20 flex items-center justify-center text-[#1877F2] font-bold text-xs border border-[#1877F2]/20">
-                          MB
-                        </div>
-                        <div>
-                          <div className="text-sm font-bold text-white uppercase tracking-tight">
-                            {post.user}
-                          </div>
-                          <div className="text-[10px] text-white/30 font-mono">
-                            {post.time}
-                          </div>
-                        </div>
-                      </div>
-                      {post.url && post.url !== "#" && (
-                        <a
-                          href={post.url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-white/20 group-hover:text-[#1877F2] transition-colors p-2 hover:bg-white/5 rounded-lg"
-                        >
-                          <ExternalLink size={16} />
-                        </a>
+                {/* Post Header */}
+                <div className="p-6 flex items-center justify-between">
+                  <div className="flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 flex items-center justify-center overflow-hidden">
+                      {post.authorPhotoUrl ? (
+                        <img src={post.authorPhotoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
+                      ) : (
+                        <User className="text-white/20" />
                       )}
                     </div>
-
-                    {post.msg && (
-                      <p className="text-sm text-white/80 leading-relaxed font-light">
-                        {post.msg}
+                    <div>
+                      <h3 className="font-bold text-white uppercase tracking-tight">
+                        {post.authorName || (post as any).user || 'Mabisa Hooper'}
+                      </h3>
+                      <p className="text-xs text-white/40 font-mono uppercase">
+                        {formatDistanceToNow(safeParseDate(post.createdAt || (post as any).time), { addSuffix: true })}
                       </p>
-                    )}
-
-                    {post.image && (
-                      <div className="rounded-2xl overflow-hidden border border-white/5 bg-black/40 relative group/img shadow-xl">
-                        <img
-                          src={post.image}
-                          alt=""
-                          className="w-full h-auto block transition-transform duration-700 group-hover/img:scale-105"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src =
-                              "https://picsum.photos/seed/hoops-fallback/800/600";
-                          }}
-                        />
-                      </div>
-                    )}
-
-                    <div className="h-[1px] bg-white/5 w-full pt-4" />
+                    </div>
                   </div>
-                ))
-              ) : (
-                <div className="flex flex-col items-center justify-center h-full text-center space-y-4 px-6">
-                  <Facebook size={40} className="text-white/10" />
-                  <p className="text-xs text-white/40 font-mono uppercase tracking-widest">
-                    No updates posted yet. Check back soon!
+                  <button className="p-2 text-white/40 hover:text-white transition-colors">
+                    <MoreHorizontal size={20} />
+                  </button>
+                </div>
+
+                {/* Post Content */}
+                <div className="px-6 pb-4">
+                  <p className="text-white/80 leading-relaxed whitespace-pre-wrap text-left">
+                    {renderContentWithLinks(post.content || (post as any).msg || '')}
                   </p>
                 </div>
-              )}
-            </div>
-          </div>
+
+                {/* Post Image */}
+                {(post.imageUrl || (post as any).image) && (
+                  <div className="aspect-video w-full overflow-hidden border-y border-white/5">
+                    <img 
+                      src={post.imageUrl || (post as any).image} 
+                      alt="" 
+                      className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
+                )}
+
+                {/* Post Actions */}
+                <div className="p-6 border-t border-white/5">
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="flex items-center gap-6">
+                      <button 
+                        onClick={() => handleLikeClick(post.id)}
+                        className={`flex items-center gap-2 group ${isLiked ? 'cursor-default' : ''}`}
+                      >
+                        <div className={`p-2 rounded-full transition-colors ${isLiked ? 'bg-neon-red/20' : 'group-hover:bg-neon-red/10'}`}>
+                          <Heart 
+                            size={20} 
+                            className={`transition-colors ${isLiked ? 'text-neon-red fill-neon-red' : 'text-white/40 group-hover:text-neon-red'}`} 
+                          />
+                        </div>
+                        <span className={`text-sm font-mono transition-colors ${isLiked ? 'text-white' : 'text-white/40 group-hover:text-white'}`}>
+                          {post.likes || 0}
+                        </span>
+                      </button>
+                      <button 
+                        onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
+                        className="flex items-center gap-2 group"
+                      >
+                        <div className="p-2 rounded-full group-hover:bg-neon-blue/10 transition-colors">
+                          <MessageCircle size={20} className="text-white/40 group-hover:text-neon-blue transition-colors" />
+                        </div>
+                        <span className="text-sm font-mono text-white/40 group-hover:text-white transition-colors">{post.comments || 0}</span>
+                      </button>
+                    </div>
+                    <button className="p-2 text-white/40 hover:text-white transition-colors">
+                      <Share2 size={20} />
+                    </button>
+                  </div>
+
+                  {/* Inline Comment Input */}
+                  <AnimatePresence>
+                    {commentingId === post.id && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        className="overflow-hidden"
+                      >
+                        <div className="flex gap-2 pt-2">
+                          <input
+                            autoFocus
+                            type="text"
+                            value={commentText}
+                            onChange={(e) => setCommentText(e.target.value)}
+                            onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit(post.id)}
+                            placeholder="Write a comment..."
+                            className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-neon-blue transition-colors"
+                          />
+                          <button
+                            onClick={() => handleCommentSubmit(post.id)}
+                            className="p-2 bg-neon-blue text-black rounded-xl hover:bg-white transition-colors"
+                          >
+                            <Send size={18} />
+                          </button>
+                        </div>
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+
+        {/* Load More / Join the Hype */}
+        <div className="text-center pt-8">
+          <button 
+            onClick={() => {
+              const scheduleSection = document.getElementById('schedule');
+              if (scheduleSection) {
+                scheduleSection.scrollIntoView({ behavior: 'smooth' });
+              }
+            }}
+            className="px-8 py-4 bg-white text-black font-display text-xl skew-x-[-12deg] hover:bg-neon-blue transition-all"
+          >
+            JOIN THE HYPE
+          </button>
         </div>
       </div>
     </section>

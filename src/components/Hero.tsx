@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Timer, Users, MapPin, Calendar, Clock, Wallet, X } from 'lucide-react';
+import { Timer, Users, MapPin, Calendar, Clock, Wallet, X, Camera, Loader2, QrCode, Check, ChevronRight, Trophy } from 'lucide-react';
 import { UpcomingGame } from '../types';
 import { cn } from '../lib/utils';
 import { format } from 'date-fns';
 import { db } from '../lib/firebase';
+import { supabase, uploadFile } from '../lib/supabase';
 import { doc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { safeParseDate } from '../lib/dateUtils';
 
 interface HeroProps {
   game: UpcomingGame;
@@ -21,17 +23,22 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
   });
   const [showPlayers, setShowPlayers] = useState(false);
   const [showReserveModal, setShowReserveModal] = useState(false);
+  const [step, setStep] = useState<1 | 2>(1);
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
     age: '',
     positions: [] as number[],
+    paymentMethod: 'Cash' as 'Cash' | 'GCash',
+    screenshotUrl: '',
   });
+  const [screenshotFile, setScreenshotFile] = useState<File | null>(null);
+  const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
 
   useEffect(() => {
-    const target = new Date(game.date).getTime();
+    const target = safeParseDate(game.date).getTime();
     const interval = setInterval(() => {
       const now = new Date().getTime();
       const distance = target - now;
@@ -64,8 +71,41 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
     });
   };
 
+  const handleScreenshotUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setScreenshotFile(file);
+    setUploadingScreenshot(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `payment_${Date.now()}.${fileExt}`;
+      const filePath = `payments/${fileName}`;
+
+      const publicUrl = await uploadFile('social-post', filePath, file);
+
+      setFormData(prev => ({ ...prev, screenshotUrl: publicUrl }));
+    } catch (error: any) {
+      console.error("Screenshot upload error:", error);
+      alert(error.message || "Failed to upload screenshot. Please try again.");
+    } finally {
+      setUploadingScreenshot(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    if (step === 1) {
+      setStep(2);
+      return;
+    }
+
+    if (formData.paymentMethod === 'GCash' && !formData.screenshotUrl) {
+      alert('Please upload your GCash screenshot as proof of payment.');
+      return;
+    }
+
     setIsSubmitting(true);
     
     try {
@@ -75,14 +115,22 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
         lastName: formData.lastName,
         age: parseInt(formData.age),
         positions: formData.positions,
+        paymentMethod: formData.paymentMethod,
+        screenshotUrl: formData.screenshotUrl || null,
         timestamp: new Date().toISOString()
       };
 
-      // Update Firestore directly
-      const docRef = doc(db, "settings", "app_data");
-      await updateDoc(docRef, {
-        "upcomingGame.pendingReservations": arrayUnion(newReservation)
-      });
+      const appDataRef = doc(db, "settings", "app_data");
+      
+      if (formData.paymentMethod === 'GCash') {
+        await updateDoc(appDataRef, {
+          "upcomingGame.pendingPayments": arrayUnion(newReservation)
+        });
+      } else {
+        await updateDoc(appDataRef, {
+          "upcomingGame.pendingReservations": arrayUnion(newReservation)
+        });
+      }
 
       setIsSubmitting(false);
       setIsSuccess(true);
@@ -92,7 +140,9 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
       setTimeout(() => {
         setShowReserveModal(false);
         setIsSuccess(false);
-        setFormData({ firstName: '', lastName: '', age: '', positions: [] });
+        setStep(1);
+        setFormData({ firstName: '', lastName: '', age: '', positions: [], paymentMethod: 'Cash', screenshotUrl: '' });
+        setScreenshotFile(null);
       }, 8000); // 8 seconds to read the important message
     } catch (error) {
       console.error(error);
@@ -103,7 +153,7 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
 
   const actualFilledSlots = (game.reservedPlayers || []).length;
   const progress = (actualFilledSlots / (game.totalSlots || 1)) * 100;
-  const gameDate = new Date(game.date || new Date().toISOString());
+  const gameDate = safeParseDate(game.date);
 
   return (
     <section className="relative min-h-[80vh] flex flex-col items-center justify-center px-4 py-20 overflow-hidden">
@@ -118,6 +168,32 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
         animate={{ opacity: 1, y: 0 }}
         className="relative z-10 text-center max-w-4xl w-full pt-10"
       >
+        {game.cashPrize && (
+          <motion.div 
+            initial={{ scale: 0, rotate: -10 }}
+            animate={{ 
+              scale: 1, 
+              rotate: 0,
+              y: [0, -10, 0]
+            }}
+            transition={{ 
+              type: "spring",
+              stiffness: 260,
+              damping: 20,
+              y: {
+                duration: 2,
+                repeat: Infinity,
+                ease: "easeInOut"
+              }
+            }}
+            className="inline-flex items-center gap-3 bg-gradient-to-r from-yellow-500 to-amber-600 p-1 px-6 rounded-full shadow-[0_0_30px_rgba(234,179,8,0.5)] mb-6 border-2 border-white/20"
+          >
+            <Trophy className="text-white" size={24} />
+            <span className="text-black font-display text-2xl font-bold italic tracking-wider">
+              CASH PRIZE: ₱{game.cashPrize}
+            </span>
+          </motion.div>
+        )}
         <h1 className="text-4xl sm:text-6xl md:text-8xl mb-4 grungy-text italic leading-tight">
           Next Mabisa Run
         </h1>
@@ -178,6 +254,17 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
                 <div className="text-sm md:text-lg font-semibold">{(game.totalSlots || 0) - actualFilledSlots} / {game.totalSlots}</div>
               </div>
             </div>
+            {game.cashPrize && (
+              <div className="flex items-center gap-3">
+                <div className="p-2 md:p-3 bg-yellow-500/20 rounded-lg shrink-0">
+                  <Trophy className="text-yellow-500" size={20} />
+                </div>
+                <div>
+                  <div className="text-[10px] md:text-sm text-white/50 uppercase tracking-wider">Cash Prize</div>
+                  <div className="text-sm md:text-lg font-semibold text-yellow-500">₱{game.cashPrize}</div>
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="space-y-4">
@@ -338,77 +425,196 @@ export const Hero: React.FC<HeroProps> = ({ game, onRefresh }) => {
                   </motion.div>
                 ) : (
                   <form onSubmit={handleSubmit} className="space-y-6">
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">First Name</label>
-                        <input 
-                          required
-                          type="text"
-                          value={formData.firstName}
-                          onChange={e => setFormData({ ...formData, firstName: e.target.value })}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
-                          placeholder="Juan"
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Last Name</label>
-                        <input 
-                          required
-                          type="text"
-                          value={formData.lastName}
-                          onChange={e => setFormData({ ...formData, lastName: e.target.value })}
-                          className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
-                          placeholder="Dela Cruz"
-                        />
-                      </div>
-                    </div>
+                    {step === 1 ? (
+                      <div className="space-y-6">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="space-y-2">
+                            <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">First Name</label>
+                            <input 
+                              required
+                              type="text"
+                              value={formData.firstName}
+                              onChange={e => setFormData({ ...formData, firstName: e.target.value })}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                              placeholder="Juan"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Last Name</label>
+                            <input 
+                              required
+                              type="text"
+                              value={formData.lastName}
+                              onChange={e => setFormData({ ...formData, lastName: e.target.value })}
+                              className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                              placeholder="Dela Cruz"
+                            />
+                          </div>
+                        </div>
 
-                    <div className="space-y-2">
-                      <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Age</label>
-                      <input 
-                        required
-                        type="number"
-                        min="15"
-                        max="60"
-                        value={formData.age}
-                        onChange={e => setFormData({ ...formData, age: e.target.value })}
-                        className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
-                        placeholder="25"
-                      />
-                    </div>
+                        <div className="space-y-2">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Age</label>
+                          <input 
+                            required
+                            type="number"
+                            min="15"
+                            max="60"
+                            value={formData.age}
+                            onChange={e => setFormData({ ...formData, age: e.target.value })}
+                            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 focus:outline-none focus:border-neon-blue transition-colors"
+                            placeholder="25"
+                          />
+                        </div>
 
-                    <div className="space-y-3">
-                      <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
-                        Positions (Select up to 2)
-                      </label>
-                      <div className="grid grid-cols-5 gap-2">
-                        {[1, 2, 3, 4, 5].map(pos => (
-                          <button
-                            key={pos}
-                            type="button"
-                            onClick={() => togglePosition(pos)}
-                            className={cn(
-                              "aspect-square rounded-xl border flex flex-col items-center justify-center transition-all",
-                              formData.positions.includes(pos)
-                                ? "bg-neon-blue border-neon-blue text-black shadow-[0_0_10px_rgba(0,242,255,0.4)]"
-                                : "bg-white/5 border-white/10 text-white/60 hover:border-white/20"
-                            )}
+                        <div className="space-y-3">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">
+                            Positions (Select up to 2)
+                          </label>
+                          <div className="grid grid-cols-5 gap-2">
+                            {[1, 2, 3, 4, 5].map(pos => (
+                              <button
+                                key={pos}
+                                type="button"
+                                onClick={() => togglePosition(pos)}
+                                className={cn(
+                                  "aspect-square rounded-xl border flex flex-col items-center justify-center transition-all",
+                                  formData.positions.includes(pos)
+                                    ? "bg-neon-blue border-neon-blue text-black shadow-[0_0_10px_rgba(0,242,255,0.4)]"
+                                    : "bg-white/5 border-white/10 text-white/60 hover:border-white/20"
+                                )}
+                              >
+                                <span className="text-lg font-display">{pos}</span>
+                                <span className="text-[8px] font-bold uppercase">
+                                  {pos === 1 ? 'PG' : pos === 2 ? 'SG' : pos === 3 ? 'SF' : pos === 4 ? 'PF' : 'C'}
+                                </span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="space-y-6">
+                        <div className="space-y-4">
+                          <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Select Payment Method</label>
+                          <div className="grid grid-cols-2 gap-4">
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, paymentMethod: 'Cash' })}
+                              className={cn(
+                                "p-4 rounded-xl border flex flex-col items-center gap-2 transition-all",
+                                formData.paymentMethod === 'Cash'
+                                  ? "bg-neon-blue border-neon-blue text-black"
+                                  : "bg-white/5 border-white/10 text-white/60 hover:border-white/20"
+                              )}
+                            >
+                              <Wallet size={24} />
+                              <span className="text-xs font-bold uppercase">Pay by Cash</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setFormData({ ...formData, paymentMethod: 'GCash' })}
+                              className={cn(
+                                "p-4 rounded-xl border flex flex-col items-center gap-2 transition-all",
+                                formData.paymentMethod === 'GCash'
+                                  ? "bg-neon-blue border-neon-blue text-black"
+                                  : "bg-white/5 border-white/10 text-white/60 hover:border-white/20"
+                              )}
+                            >
+                              <QrCode size={24} />
+                              <span className="text-xs font-bold uppercase">Pay by GCash</span>
+                            </button>
+                          </div>
+                        </div>
+
+                        {formData.paymentMethod === 'GCash' && (
+                          <motion.div 
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            className="space-y-6 p-6 bg-white/5 rounded-2xl border border-white/10"
                           >
-                            <span className="text-lg font-display">{pos}</span>
-                            <span className="text-[8px] font-bold uppercase">
-                              {pos === 1 ? 'PG' : pos === 2 ? 'SG' : pos === 3 ? 'SF' : pos === 4 ? 'PF' : 'C'}
-                            </span>
-                          </button>
-                        ))}
-                      </div>
-                    </div>
+                            <div className="text-center space-y-2">
+                              <p className="text-[10px] font-mono text-white/40 uppercase tracking-widest">Scan to Pay</p>
+                              <div className="bg-white p-4 rounded-xl w-48 h-48 mx-auto flex items-center justify-center">
+                                <div className="w-full h-full bg-blue-600 rounded flex flex-col items-center justify-center text-white">
+                                  <QrCode size={64} />
+                                  <span className="text-[10px] font-bold mt-2">GCASH QR</span>
+                                </div>
+                              </div>
+                              <p className="text-sm font-bold text-neon-blue">Mabisa Basketball</p>
+                              <p className="text-xs text-white/60 font-mono">0917-XXX-XXXX</p>
+                            </div>
 
-                    <button 
-                      disabled={isSubmitting || formData.positions.length === 0}
-                      className="w-full py-4 bg-neon-blue text-black font-display text-xl rounded-xl hover:scale-[1.02] active:scale-[0.98] transition-all disabled:opacity-50 disabled:hover:scale-100 shadow-[0_0_20px_rgba(0,242,255,0.3)]"
-                    >
-                      {isSubmitting ? 'Processing...' : 'Confirm Reservation'}
-                    </button>
+                            <div className="space-y-3">
+                              <label className="text-[10px] uppercase tracking-widest text-white/40 font-bold">Upload Screenshot Proof</label>
+                              <label className={cn(
+                                "w-full aspect-video rounded-xl border-2 border-dashed flex flex-col items-center justify-center cursor-pointer transition-all",
+                                formData.screenshotUrl 
+                                  ? "border-green-500/50 bg-green-500/5" 
+                                  : "border-white/10 hover:border-white/20 bg-white/5"
+                              )}>
+                                <input 
+                                  type="file" 
+                                  className="hidden" 
+                                  accept="image/*"
+                                  onChange={handleScreenshotUpload}
+                                />
+                                {uploadingScreenshot ? (
+                                  <Loader2 className="animate-spin text-neon-blue" size={32} />
+                                ) : formData.screenshotUrl ? (
+                                  <div className="flex flex-col items-center text-green-500">
+                                    <Check size={32} />
+                                    <span className="text-[10px] font-mono uppercase mt-2">Screenshot Uploaded</span>
+                                  </div>
+                                ) : (
+                                  <div className="flex flex-col items-center text-white/20">
+                                    <Camera size={32} />
+                                    <span className="text-[10px] font-mono uppercase mt-2">Tap to Upload</span>
+                                  </div>
+                                )}
+                              </label>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {formData.paymentMethod === 'Cash' && (
+                          <div className="p-6 bg-neon-blue/5 rounded-2xl border border-neon-blue/20 text-center">
+                            <p className="text-sm text-neon-blue font-medium">
+                              You can pay the entrance fee directly at the venue. 
+                              Your reservation will be added to the list immediately.
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="flex gap-4">
+                      {step === 2 && (
+                        <button
+                          type="button"
+                          onClick={() => setStep(1)}
+                          className="flex-1 px-6 py-4 border border-white/10 rounded-xl font-display text-lg hover:bg-white/5 transition-colors"
+                        >
+                          Back
+                        </button>
+                      )}
+                      <button 
+                        type="submit"
+                        disabled={isSubmitting || uploadingScreenshot || (step === 1 && formData.positions.length === 0)}
+                        className="flex-[2] px-8 py-4 bg-neon-blue text-black font-display text-xl rounded-xl hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,242,255,0.4)] disabled:opacity-50 disabled:hover:scale-100 flex items-center justify-center gap-2"
+                      >
+                        {isSubmitting ? (
+                          <>
+                            <Loader2 className="animate-spin" size={20} />
+                            RESERVING...
+                          </>
+                        ) : (
+                          <>
+                            {step === 1 ? 'Next Step' : 'Confirm Reservation'}
+                            <ChevronRight size={20} />
+                          </>
+                        )}
+                      </button>
+                    </div>
                   </form>
                 )}
               </div>

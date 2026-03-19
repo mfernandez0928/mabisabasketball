@@ -12,15 +12,19 @@ import {
   Image as ImageIcon,
   MessageSquare,
   Users,
+  User,
   Trophy,
   Camera,
   Loader2,
 } from "lucide-react";
-import { PlayerStats, GameResult, UpcomingGame } from "../types";
+import { PlayerStats, GameResult, UpcomingGame, Award, PendingPayment } from "../types";
 import { Logo } from "./Logo";
+import { AwardCard } from "./AwardCard";
+import { safeParseDate } from "../lib/dateUtils";
 
 import { db, storage } from "../lib/firebase";
-import { doc, onSnapshot, updateDoc, setDoc } from "firebase/firestore";
+import { supabase, uploadFile } from "../lib/supabase";
+import { doc, onSnapshot, updateDoc, setDoc, arrayRemove, arrayUnion } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 export const Admin: React.FC = () => {
@@ -33,15 +37,17 @@ export const Admin: React.FC = () => {
     socialMessages: { user: string; msg: string; time: string }[];
     socialPosts: {
       id: string;
-      user: string;
-      msg: string;
-      time: string;
-      image?: string;
-      url: string;
+      authorName: string;
+      content: string;
+      createdAt: string;
+      imageUrl?: string;
+      likes: number;
+      comments: number;
     }[];
+    awards: Award[];
   } | null>(null);
   const [activeTab, setActiveTab] = useState<
-    "schedule" | "stats" | "players" | "social" | "reservations"
+    "schedule" | "stats" | "players" | "social" | "reservations" | "awards"
   >("schedule");
 
   const navigate = useNavigate();
@@ -159,15 +165,16 @@ export const Admin: React.FC = () => {
       return;
     try {
       const pending = data.upcomingGame?.pendingReservations || [];
-      const reservationIndex = pending.findIndex((r: any) => r.id === id);
-      if (reservationIndex === -1) return;
-
-      const newData = JSON.parse(JSON.stringify(data));
-      if (newData.upcomingGame?.pendingReservations) {
-        newData.upcomingGame.pendingReservations.splice(reservationIndex, 1);
+      const reservation = pending.find((r: any) => r.id === id);
+      if (!reservation) {
+        alert("Reservation not found.");
+        return;
       }
 
-      await setDoc(doc(db, "settings", "app_data"), newData);
+      await updateDoc(doc(db, "settings", "app_data"), {
+        "upcomingGame.pendingReservations": arrayRemove(reservation)
+      });
+      alert("Reservation rejected.");
     } catch (error) {
       console.error("Error rejecting reservation:", error);
       alert("Failed to reject reservation.");
@@ -213,6 +220,36 @@ export const Admin: React.FC = () => {
 
   const [isSaving, setIsSaving] = useState(false);
   const [uploadingId, setUploadingId] = useState<string | null>(null);
+  const [uploadingSocialId, setUploadingSocialId] = useState<string | null>(null);
+
+  const handleSocialImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    postId: string,
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !data) return;
+
+    setUploadingSocialId(postId);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${postId}_${Date.now()}.${fileExt}`;
+      const filePath = `social/${fileName}`;
+
+      const publicUrl = await uploadFile('social-post', filePath, file);
+
+      const newPosts = data.socialPosts.map((p) =>
+        p.id === postId ? { ...p, imageUrl: publicUrl } : p,
+      );
+
+      setData({ ...data, socialPosts: newPosts });
+      alert("Social post image uploaded successfully!");
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert(error instanceof Error ? error.message : "Failed to upload image.");
+    } finally {
+      setUploadingSocialId(null);
+    }
+  };
 
   const handleImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -223,23 +260,147 @@ export const Admin: React.FC = () => {
 
     setUploadingId(playerId);
     try {
-      const storageRef = ref(storage, `players/${playerId}_${Date.now()}`);
-      const snapshot = await uploadBytes(storageRef, file);
-      const downloadURL = await getDownloadURL(snapshot.ref);
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${playerId}_${Date.now()}.${fileExt}`;
+      const filePath = `players/${fileName}`;
+
+      const publicUrl = await uploadFile('social-post', filePath, file);
 
       const newPlayers = data.players.map((p) =>
-        p.id === playerId ? { ...p, image: downloadURL } : p,
+        p.id === playerId ? { ...p, image: publicUrl } : p,
       );
 
       setData({ ...data, players: newPlayers });
-      alert("Photo uploaded successfully!");
+      alert("Photo uploaded successfully to Supabase!");
     } catch (error) {
       console.error("Upload error:", error);
       alert(
-        "Failed to upload image. Make sure Firebase Storage is enabled in your console.",
+        "Failed to upload image to Supabase. Make sure your bucket 'social-post' exists and is public.",
       );
     } finally {
       setUploadingId(null);
+    }
+  };
+
+  const confirmPayment = async (id: string) => {
+    if (!data) return;
+    try {
+      const pending = data.upcomingGame?.pendingPayments || [];
+      const paymentIndex = pending.findIndex((p: any) => p.id === id);
+      if (paymentIndex === -1) return;
+
+      const payment = pending[paymentIndex];
+      const newData = JSON.parse(JSON.stringify(data));
+
+      if (!newData.upcomingGame) newData.upcomingGame = {};
+      if (!newData.upcomingGame.pendingPayments)
+        newData.upcomingGame.pendingPayments = [];
+      if (!newData.upcomingGame.reservedPlayers)
+        newData.upcomingGame.reservedPlayers = [];
+      if (!newData.players) newData.players = [];
+
+      newData.upcomingGame.pendingPayments.splice(paymentIndex, 1);
+
+      // Add to reserved
+      newData.upcomingGame.reservedPlayers.push({
+        firstName: payment.firstName,
+        lastName: payment.lastName,
+        age: payment.age,
+        positions: payment.positions || [],
+      });
+
+      // Update filled slots
+      newData.upcomingGame.filledSlots = (
+        newData.upcomingGame.reservedPlayers || []
+      ).length;
+
+      // Add to global players list if not already there
+      const fullName = `${payment.firstName} ${payment.lastName}`.trim();
+      const playerExists = newData.players.some(
+        (p: any) => p.name?.toLowerCase() === fullName.toLowerCase(),
+      );
+
+      if (!playerExists) {
+        newData.players.push({
+          id: "p" + Math.random().toString(36).substr(2, 5),
+          name: fullName,
+          points: 0,
+          rebounds: 0,
+          assists: 0,
+          steals: 0,
+          blocks: 0,
+          mvps: 0,
+          wins: 0,
+          image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`,
+        });
+      }
+
+      await setDoc(doc(db, "settings", "app_data"), newData);
+      alert("Payment confirmed!");
+    } catch (error) {
+      console.error("Error confirming payment:", error);
+      alert("Failed to confirm payment.");
+    }
+  };
+
+  const rejectPayment = async (id: string) => {
+    if (!data || !confirm("Are you sure you want to reject this payment?"))
+      return;
+    try {
+      const pending = data.upcomingGame?.pendingPayments || [];
+      const payment = pending.find((p: any) => p.id === id);
+      if (!payment) {
+        alert("Payment not found.");
+        return;
+      }
+
+      await updateDoc(doc(db, "settings", "app_data"), {
+        "upcomingGame.pendingPayments": arrayRemove(payment)
+      });
+      alert("Payment rejected.");
+    } catch (error) {
+      console.error("Error rejecting payment:", error);
+      alert("Failed to reject payment.");
+    }
+  };
+
+  const handleAwardImageUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    awardType: "Player of the Night" | "Hustle Player",
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file || !data) return;
+
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `award_${awardType.replace(/\s+/g, '_')}_${Date.now()}.${fileExt}`;
+      const filePath = `awards/${fileName}`;
+
+      const publicUrl = await uploadFile('social-post', filePath, file);
+
+      // Create or update award
+      const newAwards = [...(data.awards || [])];
+      const existingIndex = newAwards.findIndex(a => a.type === awardType);
+      
+      if (existingIndex > -1) {
+        newAwards[existingIndex] = { ...newAwards[existingIndex], photoUrl: publicUrl };
+      } else {
+        newAwards.push({
+          id: Math.random().toString(36).substr(2, 9),
+          type: awardType,
+          playerName: "",
+          photoUrl: publicUrl,
+          stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 },
+          caption: "",
+          gameDate: new Date().toISOString().split('T')[0]
+        });
+      }
+
+      setData({ ...data, awards: newAwards });
+      alert("Award photo uploaded successfully!");
+    } catch (error) {
+      console.error("Upload error:", error);
+      alert("Failed to upload award image.");
     }
   };
 
@@ -343,6 +504,7 @@ export const Admin: React.FC = () => {
                 [
                   "schedule",
                   "reservations",
+                  "awards",
                   "stats",
                   "players",
                   "social",
@@ -397,85 +559,177 @@ export const Admin: React.FC = () => {
 
       <main className="max-w-4xl mx-auto p-6 py-12">
         {activeTab === "reservations" && (
-          <div className="space-y-8">
-            <div className="flex justify-between items-center">
-              <div>
-                <h2 className="text-3xl font-display">Pending Reservations</h2>
-                <p className="text-xs text-white/40 font-mono">
-                  Confirm payments to add players to the official list
-                </p>
+          <div className="space-y-12">
+            {/* Pending Payments Section */}
+            <div className="space-y-8">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-display text-neon-blue">Pending Payments (GCash)</h2>
+                  <p className="text-xs text-white/40 font-mono">
+                    Review GCash screenshots and confirm payments
+                  </p>
+                </div>
+                <div className="bg-neon-blue/10 border border-neon-blue/20 px-4 py-2 rounded-lg">
+                  <span className="text-xs font-mono text-neon-blue uppercase tracking-widest">
+                    {data.upcomingGame?.pendingPayments?.length || 0} Pending
+                  </span>
+                </div>
               </div>
-              <div className="bg-neon-blue/10 border border-neon-blue/20 px-4 py-2 rounded-lg">
-                <span className="text-xs font-mono text-neon-blue uppercase tracking-widest">
-                  {data.upcomingGame?.pendingReservations?.length || 0} Pending
-                </span>
+
+              <div className="grid grid-cols-1 gap-4">
+                {!data.upcomingGame?.pendingPayments ||
+                data.upcomingGame.pendingPayments.length === 0 ? (
+                  <div className="bg-card-bg p-12 rounded-2xl border border-white/5 text-center">
+                    <ImageIcon className="mx-auto text-white/10 mb-4" size={48} />
+                    <p className="text-white/40 font-mono">
+                      No pending GCash payments.
+                    </p>
+                  </div>
+                ) : (
+                  (data.upcomingGame?.pendingPayments || []).map((res: any) => (
+                    <div
+                      key={res.id}
+                      className="bg-card-bg p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row justify-between items-center gap-6"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-xl font-display">
+                            {res.firstName} {res.lastName}
+                          </h3>
+                          <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-mono text-white/40 uppercase">
+                            Age: {res.age}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          {(res.positions || []).map((pos) => (
+                            <span
+                              key={pos}
+                              className="text-[10px] font-bold text-neon-blue uppercase tracking-wider"
+                            >
+                              {pos === 1 ? "PG" : pos === 2 ? "SG" : pos === 3 ? "SF" : pos === 4 ? "PF" : "C"}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-[10px] text-white/20 font-mono uppercase">
+                          Requested: {safeParseDate(res.timestamp).toLocaleString()}
+                        </div>
+                        {res.screenshotUrl && (
+                          <div className="mt-4">
+                            <p className="text-[10px] font-mono text-white/40 uppercase mb-2">Payment Proof:</p>
+                            <a 
+                              href={res.screenshotUrl} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              className="inline-block relative group"
+                            >
+                              <img 
+                                src={res.screenshotUrl} 
+                                alt="Payment Proof" 
+                                className="w-32 h-32 object-cover rounded-lg border border-white/10 group-hover:opacity-50 transition-opacity"
+                              />
+                              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                <ExternalLink size={20} />
+                              </div>
+                            </a>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex gap-3 w-full md:w-auto">
+                        <button
+                          onClick={() => rejectPayment(res.id)}
+                          className="flex-1 md:flex-none px-6 py-2 border border-neon-red/50 text-neon-red rounded-lg text-xs font-mono uppercase hover:bg-neon-red/10 transition-colors"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => confirmPayment(res.id)}
+                          className="flex-1 md:flex-none px-6 py-2 bg-neon-blue text-black rounded-lg text-xs font-mono uppercase font-bold hover:bg-white transition-colors"
+                        >
+                          Confirm Payment
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4">
-              {!data.upcomingGame?.pendingReservations ||
-              data.upcomingGame.pendingReservations.length === 0 ? (
-                <div className="bg-card-bg p-12 rounded-2xl border border-white/5 text-center">
-                  <Users className="mx-auto text-white/10 mb-4" size={48} />
-                  <p className="text-white/40 font-mono">
-                    No pending reservations at the moment.
+            <div className="h-[1px] bg-white/5" />
+
+            {/* Cash Reservations Section */}
+            <div className="space-y-8">
+              <div className="flex justify-between items-center">
+                <div>
+                  <h2 className="text-3xl font-display">Cash Reservations</h2>
+                  <p className="text-xs text-white/40 font-mono">
+                    Confirm cash payments on-site
                   </p>
                 </div>
-              ) : (
-                data.upcomingGame.pendingReservations.map((res: any) => (
-                  <div
-                    key={res.id}
-                    className="bg-card-bg p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row justify-between items-center gap-6"
-                  >
-                    <div className="flex-1 space-y-2">
-                      <div className="flex items-center gap-3">
-                        <h3 className="text-xl font-display">
-                          {res.firstName} {res.lastName}
-                        </h3>
-                        <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-mono text-white/40 uppercase">
-                          Age: {res.age}
-                        </span>
-                      </div>
-                      <div className="flex gap-2">
-                        {(res.positions || []).map((pos) => (
-                          <span
-                            key={pos}
-                            className="text-[10px] font-bold text-neon-blue uppercase tracking-wider"
-                          >
-                            {pos === 1
-                              ? "PG"
-                              : pos === 2
-                                ? "SG"
-                                : pos === 3
-                                  ? "SF"
-                                  : pos === 4
-                                    ? "PF"
-                                    : "C"}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="text-[10px] text-white/20 font-mono uppercase">
-                        Requested: {new Date(res.timestamp).toLocaleString()}
-                      </div>
-                    </div>
+                <div className="bg-neon-blue/10 border border-neon-blue/20 px-4 py-2 rounded-lg">
+                  <span className="text-xs font-mono text-neon-blue uppercase tracking-widest">
+                    {data.upcomingGame?.pendingReservations?.length || 0} Pending
+                  </span>
+                </div>
+              </div>
 
-                    <div className="flex gap-3 w-full md:w-auto">
-                      <button
-                        onClick={() => rejectReservation(res.id)}
-                        className="flex-1 md:flex-none px-6 py-2 border border-neon-red/50 text-neon-red rounded-lg text-xs font-mono uppercase hover:bg-neon-red/10 transition-colors"
-                      >
-                        Reject
-                      </button>
-                      <button
-                        onClick={() => confirmReservation(res.id)}
-                        className="flex-1 md:flex-none px-6 py-2 bg-neon-blue text-black rounded-lg text-xs font-mono uppercase font-bold hover:bg-white transition-colors"
-                      >
-                        Confirm Payment
-                      </button>
-                    </div>
+              <div className="grid grid-cols-1 gap-4">
+                {!data.upcomingGame?.pendingReservations ||
+                data.upcomingGame.pendingReservations.length === 0 ? (
+                  <div className="bg-card-bg p-12 rounded-2xl border border-white/5 text-center">
+                    <Users className="mx-auto text-white/10 mb-4" size={48} />
+                    <p className="text-white/40 font-mono">
+                      No pending cash reservations.
+                    </p>
                   </div>
-                ))
-              )}
+                ) : (
+                  (data.upcomingGame?.pendingReservations || []).map((res: any) => (
+                    <div
+                      key={res.id}
+                      className="bg-card-bg p-6 rounded-2xl border border-white/5 flex flex-col md:flex-row justify-between items-center gap-6"
+                    >
+                      <div className="flex-1 space-y-2">
+                        <div className="flex items-center gap-3">
+                          <h3 className="text-xl font-display">
+                            {res.firstName} {res.lastName}
+                          </h3>
+                          <span className="px-2 py-0.5 bg-white/10 rounded text-[10px] font-mono text-white/40 uppercase">
+                            Age: {res.age}
+                          </span>
+                        </div>
+                        <div className="flex gap-2">
+                          {(res.positions || []).map((pos) => (
+                            <span
+                              key={pos}
+                              className="text-[10px] font-bold text-neon-blue uppercase tracking-wider"
+                            >
+                              {pos === 1 ? "PG" : pos === 2 ? "SG" : pos === 3 ? "SF" : pos === 4 ? "PF" : "C"}
+                            </span>
+                          ))}
+                        </div>
+                        <div className="text-[10px] text-white/20 font-mono uppercase">
+                          Requested: {safeParseDate(res.timestamp).toLocaleString()}
+                        </div>
+                      </div>
+
+                      <div className="flex gap-3 w-full md:w-auto">
+                        <button
+                          onClick={() => rejectReservation(res.id)}
+                          className="flex-1 md:flex-none px-6 py-2 border border-neon-red/50 text-neon-red rounded-lg text-xs font-mono uppercase hover:bg-neon-red/10 transition-colors"
+                        >
+                          Reject
+                        </button>
+                        <button
+                          onClick={() => confirmReservation(res.id)}
+                          className="flex-1 md:flex-none px-6 py-2 bg-neon-blue text-black rounded-lg text-xs font-mono uppercase font-bold hover:bg-white transition-colors"
+                        >
+                          Confirm Payment
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
           </div>
         )}
@@ -561,6 +815,26 @@ export const Admin: React.FC = () => {
                       })
                     }
                     className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-mono text-white/40 uppercase mb-2">
+                    Cash Prize (₱)
+                  </label>
+                  <input
+                    type="text"
+                    value={data.upcomingGame?.cashPrize || ""}
+                    onChange={(e) =>
+                      setData({
+                        ...data,
+                        upcomingGame: {
+                          ...data.upcomingGame,
+                          cashPrize: e.target.value,
+                        },
+                      })
+                    }
+                    className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                    placeholder="e.g. 1,000"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-4">
@@ -908,20 +1182,11 @@ export const Admin: React.FC = () => {
                       {/* Team White Players */}
                       <div className="space-y-2 pt-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
-                            Players & Stats
-                          </span>
-                          <button
+                          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Players & Stats</span>
+                          <button 
                             onClick={() => {
                               const newGames = [...data.games];
-                              newGames[gIdx].teamWhite.players.push({
-                                name: "",
-                                pts: 0,
-                                reb: 0,
-                                ast: 0,
-                                stl: 0,
-                                blk: 0,
-                              });
+                              newGames[gIdx].teamWhite.players.push({ name: '', pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 });
                               setData({ ...data, games: newGames });
                             }}
                             className="text-[10px] text-neon-blue hover:underline font-mono uppercase"
@@ -930,30 +1195,23 @@ export const Admin: React.FC = () => {
                           </button>
                         </div>
                         {game.teamWhite.players.map((p, pIdx) => (
-                          <div
-                            key={pIdx}
-                            className="flex flex-col gap-1 p-2 bg-black/40 rounded border border-white/5"
-                          >
+                          <div key={pIdx} className="flex flex-col gap-1 p-2 bg-black/40 rounded border border-white/5">
                             <div className="flex gap-1 items-center">
-                              <input
+                              <input 
                                 type="text"
                                 value={p.name}
                                 placeholder="Name"
                                 onChange={(e) => {
                                   const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players[pIdx].name =
-                                    e.target.value;
+                                  newGames[gIdx].teamWhite.players[pIdx].name = e.target.value;
                                   setData({ ...data, games: newGames });
                                 }}
                                 className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
                               />
-                              <button
+                              <button 
                                 onClick={() => {
                                   const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players.splice(
-                                    pIdx,
-                                    1,
-                                  );
+                                  newGames[gIdx].teamWhite.players.splice(pIdx, 1);
                                   setData({ ...data, games: newGames });
                                 }}
                                 className="text-white/20 hover:text-neon-red"
@@ -962,71 +1220,11 @@ export const Admin: React.FC = () => {
                               </button>
                             </div>
                             <div className="grid grid-cols-5 gap-1">
-                              <input
-                                type="number"
-                                value={p.pts}
-                                placeholder="PTS"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players[pIdx].pts =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Points"
-                              />
-                              <input
-                                type="number"
-                                value={p.ast}
-                                placeholder="AST"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players[pIdx].ast =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Assists"
-                              />
-                              <input
-                                type="number"
-                                value={p.reb}
-                                placeholder="REB"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players[pIdx].reb =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Rebounds"
-                              />
-                              <input
-                                type="number"
-                                value={p.stl}
-                                placeholder="STL"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players[pIdx].stl =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Steals"
-                              />
-                              <input
-                                type="number"
-                                value={p.blk}
-                                placeholder="BLK"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamWhite.players[pIdx].blk =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Blocks"
-                              />
+                              <input type="number" value={p.pts} placeholder="PTS" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamWhite.players[pIdx].pts = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Points" />
+                              <input type="number" value={p.ast} placeholder="AST" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamWhite.players[pIdx].ast = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Assists" />
+                              <input type="number" value={p.reb} placeholder="REB" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamWhite.players[pIdx].reb = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Rebounds" />
+                              <input type="number" value={p.stl} placeholder="STL" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamWhite.players[pIdx].stl = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Steals" />
+                              <input type="number" value={p.blk} placeholder="BLK" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamWhite.players[pIdx].blk = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Blocks" />
                             </div>
                           </div>
                         ))}
@@ -1060,20 +1258,11 @@ export const Admin: React.FC = () => {
                       {/* Team Blue Players */}
                       <div className="space-y-2 pt-2">
                         <div className="flex justify-between items-center">
-                          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">
-                            Players & Stats
-                          </span>
-                          <button
+                          <span className="text-[10px] font-mono text-white/20 uppercase tracking-widest">Players & Stats</span>
+                          <button 
                             onClick={() => {
                               const newGames = [...data.games];
-                              newGames[gIdx].teamBlue.players.push({
-                                name: "",
-                                pts: 0,
-                                reb: 0,
-                                ast: 0,
-                                stl: 0,
-                                blk: 0,
-                              });
+                              newGames[gIdx].teamBlue.players.push({ name: '', pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 });
                               setData({ ...data, games: newGames });
                             }}
                             className="text-[10px] text-neon-blue hover:underline font-mono uppercase"
@@ -1082,30 +1271,23 @@ export const Admin: React.FC = () => {
                           </button>
                         </div>
                         {game.teamBlue.players.map((p, pIdx) => (
-                          <div
-                            key={pIdx}
-                            className="flex flex-col gap-1 p-2 bg-black/40 rounded border border-white/5"
-                          >
+                          <div key={pIdx} className="flex flex-col gap-1 p-2 bg-black/40 rounded border border-white/5">
                             <div className="flex gap-1 items-center">
-                              <input
+                              <input 
                                 type="text"
                                 value={p.name}
                                 placeholder="Name"
                                 onChange={(e) => {
                                   const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players[pIdx].name =
-                                    e.target.value;
+                                  newGames[gIdx].teamBlue.players[pIdx].name = e.target.value;
                                   setData({ ...data, games: newGames });
                                 }}
                                 className="flex-1 bg-black border border-white/10 rounded px-2 py-1 text-[10px]"
                               />
-                              <button
+                              <button 
                                 onClick={() => {
                                   const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players.splice(
-                                    pIdx,
-                                    1,
-                                  );
+                                  newGames[gIdx].teamBlue.players.splice(pIdx, 1);
                                   setData({ ...data, games: newGames });
                                 }}
                                 className="text-white/20 hover:text-neon-red"
@@ -1114,71 +1296,11 @@ export const Admin: React.FC = () => {
                               </button>
                             </div>
                             <div className="grid grid-cols-5 gap-1">
-                              <input
-                                type="number"
-                                value={p.pts}
-                                placeholder="PTS"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players[pIdx].pts =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Points"
-                              />
-                              <input
-                                type="number"
-                                value={p.ast}
-                                placeholder="AST"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players[pIdx].ast =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Assists"
-                              />
-                              <input
-                                type="number"
-                                value={p.reb}
-                                placeholder="REB"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players[pIdx].reb =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Rebounds"
-                              />
-                              <input
-                                type="number"
-                                value={p.stl}
-                                placeholder="STL"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players[pIdx].stl =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Steals"
-                              />
-                              <input
-                                type="number"
-                                value={p.blk}
-                                placeholder="BLK"
-                                onChange={(e) => {
-                                  const newGames = [...data.games];
-                                  newGames[gIdx].teamBlue.players[pIdx].blk =
-                                    parseInt(e.target.value) || 0;
-                                  setData({ ...data, games: newGames });
-                                }}
-                                className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center"
-                                title="Blocks"
-                              />
+                              <input type="number" value={p.pts} placeholder="PTS" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamBlue.players[pIdx].pts = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Points" />
+                              <input type="number" value={p.ast} placeholder="AST" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamBlue.players[pIdx].ast = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Assists" />
+                              <input type="number" value={p.reb} placeholder="REB" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamBlue.players[pIdx].reb = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Rebounds" />
+                              <input type="number" value={p.stl} placeholder="STL" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamBlue.players[pIdx].stl = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Steals" />
+                              <input type="number" value={p.blk} placeholder="BLK" onChange={(e) => { const newGames = [...data.games]; newGames[gIdx].teamBlue.players[pIdx].blk = parseInt(e.target.value) || 0; setData({ ...data, games: newGames }); }} className="bg-black border border-white/10 rounded px-1 py-0.5 text-[9px] text-center" title="Blocks" />
                             </div>
                           </div>
                         ))}
@@ -1298,12 +1420,16 @@ export const Admin: React.FC = () => {
                 >
                   <div className="flex justify-between items-start">
                     <div className="flex gap-4 items-center flex-1">
-                      <div className="w-12 h-12 rounded-full overflow-hidden bg-black border border-white/10">
-                        <img
-                          src={player.image}
-                          alt=""
-                          className="w-full h-full object-cover"
-                        />
+                      <div className="w-12 h-12 rounded-full overflow-hidden bg-black border border-white/10 flex items-center justify-center">
+                        {player.image ? (
+                          <img
+                            src={player.image}
+                            alt={player.name}
+                            className="w-full h-full object-cover"
+                          />
+                        ) : (
+                          <User className="text-white/20" size={24} />
+                        )}
                       </div>
                       <input
                         type="text"
@@ -1338,7 +1464,6 @@ export const Admin: React.FC = () => {
                       { label: "BLK", key: "blocks" },
                       { label: "GP", key: "gamesPlayed" },
                       { label: "MVPs", key: "mvps" },
-                      { label: "Wins", key: "wins" },
                     ].map((stat) => (
                       <div key={stat.key}>
                         <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
@@ -1404,6 +1529,145 @@ export const Admin: React.FC = () => {
             </div>
           </div>
         )}
+        {activeTab === "awards" && (
+          <div className="space-y-12">
+            <div className="flex justify-between items-center">
+              <h2 className="text-3xl font-display">Game Awards</h2>
+              <button
+                onClick={handleSave}
+                disabled={isSaving}
+                className="flex items-center gap-2 bg-neon-blue text-black px-6 py-3 rounded-xl font-display text-lg hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,242,255,0.4)] disabled:opacity-50"
+              >
+                {isSaving ? (
+                  <Loader2 size={20} className="animate-spin" />
+                ) : (
+                  <Save size={20} />
+                )}
+                SAVE AWARDS
+              </button>
+            </div>
+            
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
+              {(["Player of the Night", "Hustle Player"] as const).map((type) => {
+                const award = data.awards?.find(a => a.type === type) || {
+                  id: `award-${type.replace(/\s+/g, '_').toLowerCase()}`,
+                  type,
+                  playerName: "",
+                  photoUrl: "",
+                  stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 },
+                  caption: "",
+                  gameDate: new Date().toISOString().split('T')[0]
+                };
+
+                return (
+                  <div key={type} className="space-y-8">
+                    <div className="bg-card-bg p-6 rounded-2xl border border-white/5 space-y-6">
+                      <div className="flex justify-between items-center">
+                        <h3 className="text-xl font-display text-neon-blue uppercase tracking-tighter">{type}</h3>
+                        <Trophy size={20} className="text-yellow-500" />
+                      </div>
+
+                      <div className="space-y-4">
+                        <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 group">
+                          {award.photoUrl ? (
+                            <img src={award.photoUrl} alt={type} className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full flex flex-col items-center justify-center text-white/20">
+                              <Camera size={32} className="mb-2" />
+                              <span className="text-[10px] font-mono uppercase">No Photo</span>
+                            </div>
+                          )}
+                          <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                            <input 
+                              type="file" 
+                              className="hidden" 
+                              accept="image/*"
+                              onChange={(e) => handleAwardImageUpload(e, type)}
+                            />
+                            <div className="flex items-center gap-2 text-xs font-mono uppercase">
+                              <Plus size={16} />
+                              {award.photoUrl ? "Change Photo" : "Upload Photo"}
+                            </div>
+                          </label>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-2">Player Name</label>
+                          <input 
+                            type="text"
+                            value={award.playerName}
+                            onChange={(e) => {
+                              const newAwards = [...(data.awards || [])];
+                              const idx = newAwards.findIndex(a => a.type === type);
+                              if (idx > -1) {
+                                newAwards[idx].playerName = e.target.value;
+                              } else {
+                                newAwards.push({ ...award, playerName: e.target.value });
+                              }
+                              setData({ ...data, awards: newAwards });
+                            }}
+                            className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
+                            placeholder="Enter player name"
+                          />
+                        </div>
+
+                        <div className="grid grid-cols-5 gap-2">
+                          {(['pts', 'reb', 'ast', 'stl', 'blk'] as const).map(stat => (
+                            <div key={stat}>
+                              <label className="block text-[8px] font-mono text-white/40 uppercase mb-1">{stat}</label>
+                              <input 
+                                type="number"
+                                value={award.stats[stat]}
+                                onChange={(e) => {
+                                  const newAwards = [...(data.awards || [])];
+                                  const idx = newAwards.findIndex(a => a.type === type);
+                                  if (idx > -1) {
+                                    newAwards[idx].stats[stat] = parseInt(e.target.value) || 0;
+                                  } else {
+                                    newAwards.push({ ...award, stats: { ...award.stats, [stat]: parseInt(e.target.value) || 0 } });
+                                  }
+                                  setData({ ...data, awards: newAwards });
+                                }}
+                                className="w-full bg-black border border-white/10 rounded-lg px-2 py-1 text-center text-xs focus:outline-none focus:border-neon-blue"
+                              />
+                            </div>
+                          ))}
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-2">Caption</label>
+                          <textarea 
+                            value={award.caption}
+                            onChange={(e) => {
+                              const newAwards = [...(data.awards || [])];
+                              const idx = newAwards.findIndex(a => a.type === type);
+                              if (idx > -1) {
+                                newAwards[idx].caption = e.target.value;
+                              } else {
+                                newAwards.push({ ...award, caption: e.target.value });
+                              }
+                              setData({ ...data, awards: newAwards });
+                            }}
+                            className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 h-20 resize-none focus:outline-none focus:border-neon-blue text-sm"
+                            placeholder="Short caption about the performance..."
+                          />
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Poster Preview */}
+                    <div className="space-y-4">
+                      <h4 className="text-xs font-mono text-white/40 uppercase tracking-widest text-center">Poster Preview</h4>
+                      <div className="max-w-[320px] mx-auto">
+                        <AwardCard award={award} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {activeTab === "social" && (
           <div className="space-y-12">
             {/* Manual Social Posts Section */}
@@ -1427,14 +1691,15 @@ export const Admin: React.FC = () => {
                       socialPosts: [
                         {
                           id: Math.random().toString(36).substr(2, 9),
-                          user: "Mabisa Basketball",
-                          msg: "",
-                          time: new Date().toLocaleDateString(),
-                          image:
+                          authorName: "Mabisa Basketball",
+                          content: "",
+                          createdAt: new Date().toISOString(),
+                          imageUrl:
                             "https://picsum.photos/seed/" +
                             Math.random() +
                             "/800/600",
-                          url: "https://www.facebook.com/mabisabasketball",
+                          likes: 0,
+                          comments: 0
                         },
                         ...(data?.socialPosts || []),
                       ],
@@ -1461,10 +1726,10 @@ export const Admin: React.FC = () => {
                             </label>
                             <input
                               type="text"
-                              value={post.user}
+                              value={post.authorName}
                               onChange={(e) => {
                                 const newPosts = [...data!.socialPosts];
-                                newPosts[pIdx].user = e.target.value;
+                                newPosts[pIdx].authorName = e.target.value;
                                 setData({ ...data!, socialPosts: newPosts });
                               }}
                               className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-bold focus:border-neon-blue outline-none"
@@ -1472,14 +1737,14 @@ export const Admin: React.FC = () => {
                           </div>
                           <div>
                             <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
-                              Date
+                              Date (ISO Format)
                             </label>
                             <input
                               type="text"
-                              value={post.time}
+                              value={post.createdAt}
                               onChange={(e) => {
                                 const newPosts = [...data!.socialPosts];
-                                newPosts[pIdx].time = e.target.value;
+                                newPosts[pIdx].createdAt = e.target.value;
                                 setData({ ...data!, socialPosts: newPosts });
                               }}
                               className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm focus:border-neon-blue outline-none"
@@ -1491,10 +1756,10 @@ export const Admin: React.FC = () => {
                             Caption / Message
                           </label>
                           <textarea
-                            value={post.msg}
+                            value={post.content}
                             onChange={(e) => {
                               const newPosts = [...data!.socialPosts];
-                              newPosts[pIdx].msg = e.target.value;
+                              newPosts[pIdx].content = e.target.value;
                               setData({ ...data!, socialPosts: newPosts });
                             }}
                             className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 text-base md:text-sm h-24 focus:outline-none focus:border-neon-blue"
@@ -1506,41 +1771,79 @@ export const Admin: React.FC = () => {
                             <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
                               Image URL
                             </label>
-                            <input
-                              type="text"
-                              value={post.image}
-                              onChange={(e) => {
-                                const newPosts = [...data!.socialPosts];
-                                newPosts[pIdx].image = e.target.value;
-                                setData({ ...data!, socialPosts: newPosts });
-                              }}
-                              className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
-                              placeholder="https://..."
-                            />
+                            <div className="flex gap-2">
+                              <input
+                                type="text"
+                                value={post.imageUrl}
+                                onChange={(e) => {
+                                  const newPosts = [...data!.socialPosts];
+                                  newPosts[pIdx].imageUrl = e.target.value;
+                                  setData({ ...data!, socialPosts: newPosts });
+                                }}
+                                className="flex-1 bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
+                                placeholder="https://..."
+                              />
+                              <label className="cursor-pointer bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg px-4 flex items-center justify-center transition-colors group">
+                                {uploadingSocialId === post.id ? (
+                                  <Loader2
+                                    size={16}
+                                    className="animate-spin text-neon-blue"
+                                  />
+                                ) : (
+                                  <Camera
+                                    size={16}
+                                    className="text-white/40 group-hover:text-white"
+                                  />
+                                )}
+                                <input
+                                  type="file"
+                                  accept="image/*"
+                                  className="hidden"
+                                  onChange={(e) => handleSocialImageUpload(e, post.id)}
+                                  disabled={uploadingSocialId !== null}
+                                />
+                              </label>
+                            </div>
                           </div>
-                          <div>
-                            <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
-                              External Link (Optional)
-                            </label>
-                            <input
-                              type="text"
-                              value={post.url}
-                              onChange={(e) => {
-                                const newPosts = [...data!.socialPosts];
-                                newPosts[pIdx].url = e.target.value;
-                                setData({ ...data!, socialPosts: newPosts });
-                              }}
-                              className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
-                              placeholder="#"
-                            />
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                                Likes
+                              </label>
+                              <input
+                                type="number"
+                                value={post.likes}
+                                onChange={(e) => {
+                                  const newPosts = [...data!.socialPosts];
+                                  newPosts[pIdx].likes = parseInt(e.target.value) || 0;
+                                  setData({ ...data!, socialPosts: newPosts });
+                                }}
+                                className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                                Comments
+                              </label>
+                              <input
+                                type="number"
+                                value={post.comments}
+                                onChange={(e) => {
+                                  const newPosts = [...data!.socialPosts];
+                                  newPosts[pIdx].comments = parseInt(e.target.value) || 0;
+                                  setData({ ...data!, socialPosts: newPosts });
+                                }}
+                                className="w-full bg-black border border-white/10 rounded-lg px-4 py-3 md:py-1 text-base md:text-sm font-mono focus:border-neon-blue outline-none"
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
                       <div className="w-full md:w-auto md:ml-6 flex flex-row md:flex-col items-center justify-between md:justify-start gap-4">
                         <div className="w-full md:w-32 aspect-video bg-black rounded-lg border border-white/10 overflow-hidden flex items-center justify-center">
-                          {post.image ? (
+                          {post.imageUrl ? (
                             <img
-                              src={post.image}
+                              src={post.imageUrl}
                               alt="Preview"
                               className="max-w-full max-h-full object-contain"
                             />
