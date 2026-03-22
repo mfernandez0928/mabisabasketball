@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { MessageSquare, Send, X, Minimize2, Maximize2 } from "lucide-react";
 import { db } from "../lib/firebase";
-import { collection, addDoc, Timestamp } from "firebase/firestore";
+import { doc, updateDoc, arrayUnion, Timestamp } from "firebase/firestore";
 import { motion, AnimatePresence } from "motion/react";
 
 interface TrashTalkFloatingProps {
@@ -15,6 +15,7 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
   const [isMinimized, setIsMinimized] = useState(false);
   const [newMessage, setNewMessage] = useState("");
   const [userName, setUserName] = useState("");
+  const [isNameLocked, setIsNameLocked] = useState(false);
   const [isSending, setIsSending] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
 
@@ -30,19 +31,37 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
 
     setIsSending(true);
     try {
-      await addDoc(collection(db, "messages"), {
-        user: userName.trim() || "Anonymous Player",
+      const finalName = userName.trim() || "Anonymous Player";
+      const messageData = {
+        user: finalName,
         msg: newMessage.trim(),
+        time: new Date().toLocaleTimeString([], {
+          hour: "2-digit",
+          minute: "2-digit",
+        }),
         timestamp: Timestamp.now(),
+      };
+
+      await updateDoc(doc(db, "settings", "app_data"), {
+        socialMessages: arrayUnion(messageData),
       });
 
       setNewMessage("");
+      setUserName(finalName);
+      setIsNameLocked(true);
     } catch (error) {
       console.error("Error sending message:", error);
     } finally {
       setIsSending(false);
     }
   };
+
+  // Sort messages by timestamp if available, otherwise keep order
+  const sortedMessages = [...messages].sort((a, b) => {
+    const timeA = a.timestamp?.seconds || 0;
+    const timeB = b.timestamp?.seconds || 0;
+    return timeA - timeB;
+  });
 
   return (
     <div className="fixed bottom-24 md:bottom-6 right-6 z-[100] flex flex-col items-end">
@@ -94,7 +113,7 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
                   ref={scrollRef}
                   className="flex-1 p-4 space-y-4 overflow-y-auto custom-scrollbar bg-black/20"
                 >
-                  {messages.length === 0 ? (
+                  {sortedMessages.length === 0 ? (
                     <div className="h-full flex flex-col items-center justify-center text-center p-6 space-y-2">
                       <MessageSquare size={32} className="text-white/5" />
                       <p className="text-[10px] font-mono text-white/20 uppercase">
@@ -102,7 +121,7 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
                       </p>
                     </div>
                   ) : (
-                    messages.map((chat, i) => (
+                    sortedMessages.map((chat, i) => (
                       <div key={i} className="space-y-1">
                         <div className="flex justify-between items-center px-1">
                           <span className="text-[10px] font-bold text-neon-blue uppercase">
@@ -114,7 +133,7 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
                                   hour: "2-digit",
                                   minute: "2-digit",
                                 })
-                              : "Just now"}
+                              : chat.time || "Just now"}
                           </span>
                         </div>
                         <div className="bg-white/5 p-2.5 rounded-xl text-xs border border-white/5 leading-relaxed">
@@ -132,8 +151,11 @@ export const TrashTalkFloating: React.FC<TrashTalkFloatingProps> = ({
                       type="text"
                       value={userName}
                       onChange={(e) => setUserName(e.target.value)}
+                      disabled={isNameLocked}
                       placeholder="Your Name (Optional)"
-                      className="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] focus:outline-none focus:border-neon-blue transition-colors"
+                      className={`w-full bg-white/5 border border-white/10 rounded-lg px-3 py-1.5 text-[10px] focus:outline-none focus:border-neon-blue transition-colors ${
+                        isNameLocked ? "opacity-50 cursor-not-allowed" : ""
+                      }`}
                     />
                     <div className="relative">
                       <input

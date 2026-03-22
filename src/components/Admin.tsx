@@ -47,6 +47,7 @@ import {
   setDoc,
   arrayRemove,
   arrayUnion,
+  Timestamp,
 } from "firebase/firestore";
 import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
@@ -2360,7 +2361,11 @@ export const Admin: React.FC = () => {
                           {
                             user: "Admin",
                             msg: "New message",
-                            time: "Just now",
+                            time: new Date().toLocaleTimeString([], {
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            }),
+                            timestamp: Timestamp.now(),
                           },
                           ...(data!.socialMessages || []),
                         ],
