@@ -1,78 +1,72 @@
-import React from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Home, Trophy, Users, MessageSquare, Settings } from 'lucide-react';
-import { cn } from '../lib/utils';
+import React from "react";
+import { motion } from "motion/react";
+import { Home, Trophy, Users, MessageSquare, Calendar } from "lucide-react";
+import { cn } from "../lib/utils";
 
 interface MobileNavbarProps {
   activeTab: string;
   setActiveTab: (tab: string) => void;
+  setIsManualScrolling: (value: boolean) => void;
 }
 
 const NAV_ITEMS = [
-  { id: 'home', label: 'Home', icon: Home },
-  { id: 'stats', label: 'Stats', icon: Trophy },
-  { id: 'players', label: 'Players', icon: Users },
-  { id: 'hype', label: 'Hype', icon: MessageSquare },
-  { id: 'settings', label: 'More', icon: Settings },
+  { id: "schedule", label: "Home", icon: Home },
+  { id: "stats", label: "Stats", icon: Trophy },
+  { id: "leaderboard", label: "Players", icon: Users },
+  { id: "mvp", label: "MVP", icon: Calendar },
+  { id: "social", label: "Hype", icon: MessageSquare },
 ];
 
-export const MobileNavbar: React.FC<MobileNavbarProps> = ({ activeTab, setActiveTab }) => {
-  return (
-    <div className="fixed bottom-0 left-0 right-0 z-[100] md:hidden px-6 pb-8 pointer-events-none">
-      <div className="max-w-md mx-auto h-20 bg-black/80 backdrop-blur-2xl border border-white/10 rounded-[2.5rem] flex items-center justify-around px-4 shadow-[0_20px_50px_rgba(0,0,0,0.5)] pointer-events-auto relative">
-        {/* Active Indicator Background */}
-        <div className="absolute inset-0 flex items-center justify-around px-4 pointer-events-none">
-          {NAV_ITEMS.map((item) => (
-            <div key={item.id} className="relative w-12 h-12 flex items-center justify-center">
-              {activeTab === item.id && (
-                <motion.div 
-                  layoutId="nav-glow"
-                  className="absolute -top-12 w-16 h-16 bg-neon-blue/20 blur-2xl rounded-full"
-                />
-              )}
-            </div>
-          ))}
-        </div>
+export const MobileNavbar: React.FC<MobileNavbarProps> = ({
+  activeTab,
+  setActiveTab,
+  setIsManualScrolling,
+}) => {
+  const handleClick = (id: string) => {
+    setIsManualScrolling(true);
+    setActiveTab(id);
 
+    const el = document.getElementById(id);
+    if (el) {
+      el.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    setTimeout(() => {
+      setIsManualScrolling(false);
+    }, 800);
+  };
+
+  return (
+    <div className="fixed bottom-6 left-0 right-0 z-[100] md:hidden px-6 pointer-events-none">
+      <div className="max-w-[320px] mx-auto h-14 bg-black/60 backdrop-blur-xl border border-white/10 rounded-full flex items-center justify-between px-2 shadow-[0_20px_40px_rgba(0,0,0,0.4)] pointer-events-auto">
         {NAV_ITEMS.map((item) => {
           const isActive = activeTab === item.id;
+
           return (
             <button
               key={item.id}
-              onClick={() => setActiveTab(item.id)}
-              className="relative w-12 h-12 flex flex-col items-center justify-center group"
+              onClick={() => handleClick(item.id)}
+              className="group relative flex-1 h-10 flex items-center justify-center transition-all duration-300"
             >
-              {/* Active Circle Lift */}
-              <AnimatePresence>
-                {isActive && (
-                  <motion.div
-                    layoutId="nav-circle"
-                    initial={{ y: 20, opacity: 0, scale: 0.5 }}
-                    animate={{ y: -35, opacity: 1, scale: 1 }}
-                    exit={{ y: 20, opacity: 0, scale: 0.5 }}
-                    transition={{ type: 'spring', stiffness: 300, damping: 20 }}
-                    className="absolute w-14 h-14 bg-neon-blue rounded-full border-4 border-black shadow-[0_10px_20px_rgba(0,242,255,0.3)] flex items-center justify-center z-10"
-                  >
-                    <item.icon size={24} className="text-black" />
-                  </motion.div>
-                )}
-              </AnimatePresence>
+              {isActive && (
+                <motion.div
+                  layoutId="active-pill"
+                  className="absolute inset-0 bg-neon-blue rounded-full mx-1 my-1"
+                  transition={{ type: "spring", stiffness: 380, damping: 30 }}
+                />
+              )}
 
-              {/* Inactive Icon */}
-              <div className={cn(
-                "transition-all duration-300",
-                isActive ? "opacity-0 scale-50" : "opacity-40 scale-100 group-hover:opacity-80"
-              )}>
-                <item.icon size={22} className="text-white" />
+              <div className="relative z-10 flex flex-col items-center justify-center">
+                <item.icon
+                  size={18}
+                  className={cn(
+                    "transition-colors duration-300",
+                    isActive
+                      ? "text-black"
+                      : "text-white/40 group-hover:text-white",
+                  )}
+                />
               </div>
-
-              {/* Label */}
-              <span className={cn(
-                "text-[8px] font-mono uppercase tracking-widest mt-1 transition-all duration-300",
-                isActive ? "text-neon-blue font-bold translate-y-2" : "text-white/20"
-              )}>
-                {item.label}
-              </span>
             </button>
           );
         })}

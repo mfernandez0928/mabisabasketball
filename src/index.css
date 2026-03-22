@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap');
+@import url("https://fonts.googleapis.com/css2?family=Bangers&family=Inter:wght@400;600;800&family=JetBrains+Mono:wght@400;700&display=swap");
 @import "tailwindcss";
 
 @theme {
@@ -10,6 +10,15 @@
   --color-neon-red: #ff6b00;
   --color-dark-bg: #0a0a0c;
   --color-card-bg: #16161e;
+
+  @keyframes marquee {
+    from {
+      transform: translateX(0);
+    }
+    to {
+      transform: translateX(-50%);
+    }
+  }
 }
 
 @layer base {
@@ -21,13 +30,18 @@
     @apply bg-dark-bg text-white font-sans antialiased;
   }
 
-  h1, h2, h3, h4 {
+  h1,
+  h2,
+  h3,
+  h4 {
     @apply font-display tracking-wider uppercase;
   }
 }
 
 .grungy-text {
-  text-shadow: 2px 2px 0px rgba(245, 158, 11, 0.5), -2px -2px 0px rgba(255, 107, 0, 0.5);
+  text-shadow:
+    2px 2px 0px rgba(245, 158, 11, 0.5),
+    -2px -2px 0px rgba(255, 107, 0, 0.5);
 }
 
 .neon-border-blue {

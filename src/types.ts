@@ -1,4 +1,4 @@
-export type PaymentMethod = 'cash' | 'gcash';
+export type PaymentMethod = "cash" | "gcash";
 
 export interface Event {
   id: string;
@@ -62,7 +62,7 @@ export interface GameResult {
 
 export interface Award {
   id: string;
-  type: 'Player of the Night' | 'Hustle Player';
+  type: "Player of the Night" | "Hustle Player";
   playerName: string;
   photoUrl: string;
   stats: {
@@ -82,7 +82,7 @@ export interface PendingPayment {
   lastName: string;
   age: number;
   positions: number[];
-  paymentMethod: 'CASH' | 'GCASH';
+  paymentMethod: "CASH" | "GCASH";
   screenshotUrl?: string;
   timestamp: string;
 }
@@ -97,17 +97,17 @@ export interface UpcomingGame {
   entranceFee: string;
   cashPrize?: string;
   timeRange?: string;
-  reservedPlayers: { 
-    firstName: string; 
-    lastName: string; 
-    age: number; 
-    positions: number[] 
+  reservedPlayers: {
+    firstName: string;
+    lastName: string;
+    age: number;
+    positions: number[];
   }[];
-  pendingReservations?: { 
+  pendingReservations?: {
     id: string;
-    firstName: string; 
-    lastName: string; 
-    age: number; 
+    firstName: string;
+    lastName: string;
+    age: number;
     positions: number[];
     timestamp: string;
   }[];
@@ -122,4 +122,6 @@ export interface AppData {
   socialPosts: SocialPost[];
   mvpDescription?: string;
   awards?: Award[];
+  gcashNumber?: string;
+  gcashQrCode?: string;
 }

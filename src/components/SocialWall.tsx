@@ -1,9 +1,17 @@
-import React, { useState, useEffect } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { Heart, MessageCircle, Share2, MoreHorizontal, User, Send } from 'lucide-react';
-import { SocialPost } from '../types';
-import { formatDistanceToNow } from 'date-fns';
-import { safeParseDate } from '../lib/dateUtils';
+import React, { useState, useEffect } from "react";
+import { motion, AnimatePresence } from "motion/react";
+import {
+  Heart,
+  MessageCircle,
+  Share2,
+  MoreHorizontal,
+  User,
+  Send,
+} from "lucide-react";
+import { SocialPost } from "../types";
+import { formatDistanceToNow } from "date-fns";
+import { safeParseDate } from "../lib/dateUtils";
+import { ASSETS } from "../constants/assets";
 
 interface SocialWallProps {
   socialPosts: SocialPost[];
@@ -11,13 +19,17 @@ interface SocialWallProps {
   onComment?: (postId: string, text: string) => void;
 }
 
-export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onComment }) => {
+export const SocialWall: React.FC<SocialWallProps> = ({
+  socialPosts,
+  onLike,
+  onComment,
+}) => {
   const [likedPosts, setLikedPosts] = useState<string[]>([]);
   const [commentingId, setCommentingId] = useState<string | null>(null);
   const [commentText, setCommentText] = useState("");
 
   useEffect(() => {
-    const savedLikes = localStorage.getItem('mabisa_likes');
+    const savedLikes = localStorage.getItem("mabisa_likes");
     if (savedLikes) {
       setLikedPosts(JSON.parse(savedLikes));
     }
@@ -25,10 +37,10 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
 
   const handleLikeClick = (postId: string) => {
     if (likedPosts.includes(postId)) return;
-    
+
     const newLikes = [...likedPosts, postId];
     setLikedPosts(newLikes);
-    localStorage.setItem('mabisa_likes', JSON.stringify(newLikes));
+    localStorage.setItem("mabisa_likes", JSON.stringify(newLikes));
     onLike?.(postId);
   };
 
@@ -44,11 +56,11 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
     return content.split(urlRegex).map((part, i) => {
       if (part.match(urlRegex)) {
         return (
-          <a 
-            key={i} 
-            href={part} 
-            target="_blank" 
-            rel="noopener noreferrer" 
+          <a
+            key={i}
+            href={part}
+            target="_blank"
+            rel="noopener noreferrer"
             className="text-neon-blue hover:underline break-all"
           >
             {part}
@@ -63,20 +75,26 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
     <section className="py-20 px-4">
       <div className="max-w-4xl mx-auto space-y-20">
         <div className="text-center space-y-4">
-          <h2 className="text-5xl md:text-7xl grungy-text italic">The Community</h2>
-          <p className="text-white/40 font-mono text-sm uppercase tracking-widest">Hype from the court</p>
+          <h2 className="text-5xl md:text-7xl grungy-text italic">
+            The Community
+          </h2>
+          <p className="text-white/40 font-mono text-sm uppercase tracking-widest">
+            Hype from the court
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-8">
           <div className="flex items-center gap-4 mb-4">
             <div className="h-[1px] flex-1 bg-white/10" />
-            <h3 className="text-2xl font-display text-neon-blue italic">Social Feed</h3>
+            <h3 className="text-2xl font-display text-neon-blue italic">
+              Social Feed
+            </h3>
             <div className="h-[1px] flex-1 bg-white/10" />
           </div>
           {socialPosts.map((post) => {
             const isLiked = likedPosts.includes(post.id);
             return (
-              <motion.div 
+              <motion.div
                 key={post.id}
                 initial={{ opacity: 0, y: 20 }}
                 whileInView={{ opacity: 1, y: 0 }}
@@ -86,19 +104,25 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
                 {/* Post Header */}
                 <div className="p-6 flex items-center justify-between">
                   <div className="flex items-center gap-4">
-                    <div className="w-12 h-12 rounded-full bg-white/10 border border-white/10 flex items-center justify-center overflow-hidden">
-                      {post.authorPhotoUrl ? (
-                        <img src={post.authorPhotoUrl} alt="" className="w-full h-full object-cover" referrerPolicy="no-referrer" />
-                      ) : (
-                        <User className="text-white/20" />
-                      )}
+                    <div className="w-12 h-12 rounded-full bg-white flex items-center justify-center overflow-hidden border border-white/10">
+                      <img
+                        src={ASSETS.LOGO}
+                        alt="Mabisa"
+                        className="w-full h-full object-contain p-1"
+                        referrerPolicy="no-referrer"
+                      />
                     </div>
                     <div>
                       <h3 className="font-bold text-white uppercase tracking-tight">
-                        {post.authorName || (post as any).user || 'Mabisa Hooper'}
+                        {post.authorName ||
+                          (post as any).user ||
+                          "Mabisa Hooper"}
                       </h3>
                       <p className="text-xs text-white/40 font-mono uppercase">
-                        {formatDistanceToNow(safeParseDate(post.createdAt || (post as any).time), { addSuffix: true })}
+                        {formatDistanceToNow(
+                          safeParseDate(post.createdAt || (post as any).time),
+                          { addSuffix: true },
+                        )}
                       </p>
                     </div>
                   </div>
@@ -110,16 +134,18 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
                 {/* Post Content */}
                 <div className="px-6 pb-4">
                   <p className="text-white/80 leading-relaxed whitespace-pre-wrap text-left">
-                    {renderContentWithLinks(post.content || (post as any).msg || '')}
+                    {renderContentWithLinks(
+                      post.content || (post as any).msg || "",
+                    )}
                   </p>
                 </div>
 
                 {/* Post Image */}
                 {(post.imageUrl || (post as any).image) && (
                   <div className="aspect-video w-full overflow-hidden border-y border-white/5">
-                    <img 
-                      src={post.imageUrl || (post as any).image} 
-                      alt="" 
+                    <img
+                      src={post.imageUrl || (post as any).image}
+                      alt=""
                       className="w-full h-full object-cover hover:scale-105 transition-transform duration-700"
                       referrerPolicy="no-referrer"
                     />
@@ -130,28 +156,41 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
                 <div className="p-6 border-t border-white/5">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-6">
-                      <button 
+                      <button
                         onClick={() => handleLikeClick(post.id)}
-                        className={`flex items-center gap-2 group ${isLiked ? 'cursor-default' : ''}`}
+                        className={`flex items-center gap-2 group ${isLiked ? "cursor-default" : ""}`}
                       >
-                        <div className={`p-2 rounded-full transition-colors ${isLiked ? 'bg-neon-red/20' : 'group-hover:bg-neon-red/10'}`}>
-                          <Heart 
-                            size={20} 
-                            className={`transition-colors ${isLiked ? 'text-neon-red fill-neon-red' : 'text-white/40 group-hover:text-neon-red'}`} 
+                        <div
+                          className={`p-2 rounded-full transition-colors ${isLiked ? "bg-neon-red/20" : "group-hover:bg-neon-red/10"}`}
+                        >
+                          <Heart
+                            size={20}
+                            className={`transition-colors ${isLiked ? "text-neon-red fill-neon-red" : "text-white/40 group-hover:text-neon-red"}`}
                           />
                         </div>
-                        <span className={`text-sm font-mono transition-colors ${isLiked ? 'text-white' : 'text-white/40 group-hover:text-white'}`}>
+                        <span
+                          className={`text-sm font-mono transition-colors ${isLiked ? "text-white" : "text-white/40 group-hover:text-white"}`}
+                        >
                           {post.likes || 0}
                         </span>
                       </button>
-                      <button 
-                        onClick={() => setCommentingId(commentingId === post.id ? null : post.id)}
+                      <button
+                        onClick={() =>
+                          setCommentingId(
+                            commentingId === post.id ? null : post.id,
+                          )
+                        }
                         className="flex items-center gap-2 group"
                       >
                         <div className="p-2 rounded-full group-hover:bg-neon-blue/10 transition-colors">
-                          <MessageCircle size={20} className="text-white/40 group-hover:text-neon-blue transition-colors" />
+                          <MessageCircle
+                            size={20}
+                            className="text-white/40 group-hover:text-neon-blue transition-colors"
+                          />
                         </div>
-                        <span className="text-sm font-mono text-white/40 group-hover:text-white transition-colors">{post.comments || 0}</span>
+                        <span className="text-sm font-mono text-white/40 group-hover:text-white transition-colors">
+                          {post.comments || 0}
+                        </span>
                       </button>
                     </div>
                     <button className="p-2 text-white/40 hover:text-white transition-colors">
@@ -164,7 +203,7 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
                     {commentingId === post.id && (
                       <motion.div
                         initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
+                        animate={{ opacity: 1, height: "auto" }}
                         exit={{ opacity: 0, height: 0 }}
                         className="overflow-hidden"
                       >
@@ -174,7 +213,9 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
                             type="text"
                             value={commentText}
                             onChange={(e) => setCommentText(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleCommentSubmit(post.id)}
+                            onKeyDown={(e) =>
+                              e.key === "Enter" && handleCommentSubmit(post.id)
+                            }
                             placeholder="Write a comment..."
                             className="flex-1 bg-black/40 border border-white/10 rounded-xl px-4 py-2 text-sm text-white outline-none focus:border-neon-blue transition-colors"
                           />
@@ -196,11 +237,11 @@ export const SocialWall: React.FC<SocialWallProps> = ({ socialPosts, onLike, onC
 
         {/* Load More / Join the Hype */}
         <div className="text-center pt-8">
-          <button 
+          <button
             onClick={() => {
-              const scheduleSection = document.getElementById('schedule');
+              const scheduleSection = document.getElementById("schedule");
               if (scheduleSection) {
-                scheduleSection.scrollIntoView({ behavior: 'smooth' });
+                scheduleSection.scrollIntoView({ behavior: "smooth" });
               }
             }}
             className="px-8 py-4 bg-white text-black font-display text-xl skew-x-[-12deg] hover:bg-neon-blue transition-all"

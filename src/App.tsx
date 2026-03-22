@@ -16,9 +16,11 @@ import { SocialWall } from "./components/SocialWall";
 import { TrashTalkFloating } from "./components/TrashTalkFloating";
 import { MobileNavbar } from "./components/MobileNavbar";
 import { AwardsSection } from "./components/AwardsSection";
+import { PartnersSection } from "./components/PartnersSection";
 import { Admin } from "./components/Admin";
 import { Logo } from "./components/Logo";
-import { PlayerStats, GameResult, UpcomingGame } from "./types";
+import { db } from "./lib/firebase";
+import { doc, onSnapshot, updateDoc } from "firebase/firestore";
 
 function MainSite({
   data,
@@ -30,17 +32,51 @@ function MainSite({
   const location = useLocation();
   const [showTerms, setShowTerms] = useState(false);
   const [showPrivacy, setShowPrivacy] = useState(false);
+  const [activeTab, setActiveTab] = useState("schedule");
+  const [isManualScrolling, setIsManualScrolling] = useState(false);
+
+  useEffect(() => {
+    const sections = ["schedule", "stats", "mvp", "leaderboard", "social"];
+
+    const handleScroll = () => {
+      if (isManualScrolling) return;
+
+      let currentSection = "schedule";
+      let closestDistance = Infinity;
+
+      sections.forEach((id) => {
+        const el = document.getElementById(id);
+        if (!el) return;
+
+        const rect = el.getBoundingClientRect();
+        const distance = Math.abs(rect.top - 140);
+
+        if (distance < closestDistance) {
+          closestDistance = distance;
+          currentSection = id;
+        }
+      });
+
+      setActiveTab(currentSection);
+    };
+
+    window.addEventListener("scroll", handleScroll);
+    handleScroll();
+
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, [isManualScrolling]);
 
   useEffect(() => {
     onRefresh();
   }, [location.pathname, onRefresh]);
 
-  if (!data)
+  if (!data) {
     return (
       <div className="min-h-screen bg-dark-bg flex items-center justify-center text-white font-mono">
         Loading...
       </div>
     );
+  }
 
   const players = data.players || [];
   const games = data.games || [];
@@ -51,34 +87,16 @@ function MainSite({
     pendingReservations: [],
   };
 
-  const latestGame = games[0];
-  let mvpPlayer = players.find((p) => p.id === latestGame?.mvpId);
-  let mvpGameStats: { pts: number; reb: number; ast: number; stl: number; blk: number } | undefined = undefined;
-
-  if (mvpPlayer && latestGame) {
-    const allGamePlayers = [
-      ...(latestGame.teamWhite?.players || []),
-      ...(latestGame.teamBlue?.players || []),
-    ];
-    const stats = allGamePlayers.find(
-      (p) => p.name.toLowerCase() === mvpPlayer?.name.toLowerCase(),
-    );
-    if (stats) {
-      mvpGameStats = { pts: stats.pts, reb: stats.reb, ast: stats.ast, stl: stats.stl, blk: stats.blk };
-    }
-  }
-
   const handleLike = async (postId: string) => {
     if (!data) return;
-    
-    // Server-side check: make sure we don't increment if already liked
-    // (Though UI handles this, we can add a simple check if we had user IDs)
-    const newPosts = data.socialPosts.map((p: any) => 
-      p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p
+
+    const newPosts = (data.socialPosts || []).map((p: any) =>
+      p.id === postId ? { ...p, likes: (p.likes || 0) + 1 } : p,
     );
+
     try {
       await updateDoc(doc(db, "settings", "app_data"), {
-        socialPosts: newPosts
+        socialPosts: newPosts,
       });
     } catch (err) {
       console.error("Error liking post:", err);
@@ -87,16 +105,15 @@ function MainSite({
 
   const handleComment = async (postId: string, text: string) => {
     if (!data || !text) return;
-    
-    const newPosts = data.socialPosts.map((p: any) => 
-      p.id === postId ? { ...p, comments: (p.comments || 0) + 1 } : p
+
+    const newPosts = (data.socialPosts || []).map((p: any) =>
+      p.id === postId ? { ...p, comments: (p.comments || 0) + 1 } : p,
     );
+
     try {
       await updateDoc(doc(db, "settings", "app_data"), {
-        socialPosts: newPosts
+        socialPosts: newPosts,
       });
-      // In a real app, we would also save the comment text to a subcollection
-      // For now, we increment the counter as requested to show it's "working"
     } catch (err) {
       console.error("Error commenting on post:", err);
     }
@@ -104,11 +121,13 @@ function MainSite({
 
   return (
     <div className="min-h-screen selection:bg-neon-blue selection:text-black">
-      {/* Navigation */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-dark-bg/80 backdrop-blur-lg border-b border-white/5 px-4 md:px-6 py-4">
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-dark-bg/60 backdrop-blur-xl border-b border-white/5 px-4 md:px-6 py-3 md:py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
-          <a href="#" className="flex items-center gap-2 md:gap-3">
-            <Logo className="w-8 h-8 md:w-10 md:h-10" />
+          <a
+            href="#schedule"
+            className="flex items-center gap-2 md:gap-3 group"
+          >
+            <Logo className="w-8 h-8 md:w-10 md:h-10 group-hover:rotate-12 transition-transform" />
             <span className="font-display text-lg md:text-2xl tracking-tighter whitespace-nowrap">
               MABISA{" "}
               <span className="text-neon-blue hidden sm:inline">
@@ -116,6 +135,7 @@ function MainSite({
               </span>
             </span>
           </a>
+
           <div className="hidden md:flex items-center gap-8 text-xs uppercase tracking-widest font-bold">
             <a
               href="#schedule"
@@ -125,6 +145,12 @@ function MainSite({
             </a>
             <a href="#stats" className="hover:text-neon-blue transition-colors">
               Stats
+            </a>
+            <a
+              href="#leaderboard"
+              className="hover:text-neon-blue transition-colors"
+            >
+              Players
             </a>
             <a href="#mvp" className="hover:text-neon-blue transition-colors">
               MVP
@@ -136,16 +162,17 @@ function MainSite({
               Social
             </a>
           </div>
-          <div className="flex items-center gap-2 md:gap-4">
+
+          <div className="flex items-center gap-3 md:gap-4">
             <Link
               to="/admin"
-              className="text-white/20 hover:text-white text-[8px] md:text-[10px] font-mono uppercase tracking-widest"
+              className="text-white/20 hover:text-white text-[10px] font-mono uppercase tracking-widest"
             >
               Admin
             </Link>
             <a
               href="#schedule"
-              className="bg-white text-black px-3 md:px-4 py-1.5 md:py-2 rounded-lg font-display text-xs md:text-sm hover:bg-neon-blue transition-colors whitespace-nowrap"
+              className="bg-white text-black px-4 py-2 rounded-xl font-display text-xs md:text-sm hover:bg-neon-blue transition-all hover:scale-105 active:scale-95 whitespace-nowrap shadow-[0_0_20px_rgba(255,255,255,0.1)]"
             >
               JOIN RUN
             </a>
@@ -154,8 +181,13 @@ function MainSite({
       </nav>
 
       <main>
-        <section id="schedule">
-          <Hero game={upcomingGame} onRefresh={onRefresh} />
+        <section id="schedule" className="scroll-mt-24">
+          <Hero
+            game={upcomingGame}
+            onRefresh={onRefresh}
+            gcashNumber={data.gcashNumber}
+            gcashQrCode={data.gcashQrCode}
+          />
         </section>
 
         {data.awards && data.awards.length > 0 && (
@@ -163,28 +195,27 @@ function MainSite({
         )}
 
         <div className="relative">
-          {/* Section Dividers / Gradients */}
           <div className="absolute top-0 left-0 right-0 h-40 bg-gradient-to-b from-dark-bg to-transparent z-10" />
 
           {games.length > 0 && (
-            <section id="stats">
+            <section id="stats" className="scroll-mt-24">
               <GameChart games={games} players={players} />
             </section>
           )}
 
           {data.awards && data.awards.length > 0 && (
-            <section id="mvp">
+            <section id="mvp" className="scroll-mt-24">
               <MVPSpotlight awards={data.awards} />
             </section>
           )}
 
           {players.length > 0 && (
-            <section id="leaderboard">
+            <section id="leaderboard" className="scroll-mt-24">
               <Leaderboard players={players} />
             </section>
           )}
 
-          <section id="social">
+          <section id="social" className="scroll-mt-24">
             <SocialWall
               socialPosts={data.socialPosts || []}
               onLike={handleLike}
@@ -192,10 +223,11 @@ function MainSite({
             />
           </section>
         </div>
+
+        <PartnersSection />
       </main>
 
-      {/* Footer */}
-      <footer className="py-16 px-6 border-t border-white/5 bg-black">
+      <footer className="py-16 px-6 border-t border-white/5 bg-black pb-32 md:pb-16">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12 mb-12">
             <div className="space-y-4">
@@ -287,7 +319,6 @@ function MainSite({
         </div>
       </footer>
 
-      {/* Legal Modals */}
       <AnimatePresence>
         {showTerms && (
           <div className="fixed inset-0 z-[200] flex items-center justify-center p-4">
@@ -436,24 +467,25 @@ function MainSite({
           </div>
         )}
       </AnimatePresence>
+
       <TrashTalkFloating messages={data.socialMessages || []} />
-      <MobileNavbar />
+
+      <MobileNavbar
+        activeTab={activeTab}
+        setActiveTab={setActiveTab}
+        setIsManualScrolling={setIsManualScrolling}
+      />
     </div>
   );
 }
-
-import { db } from "./lib/firebase";
-import { doc, onSnapshot, updateDoc, arrayUnion } from "firebase/firestore";
 
 export default function App() {
   const [data, setData] = useState<any>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
   const [isLocalMode, setIsLocalMode] = useState(false);
 
   useEffect(() => {
-    // Listen to the 'settings/app_data' document in real-time
     const unsub = onSnapshot(
       doc(db, "settings", "app_data"),
       (docSnap) => {
@@ -479,6 +511,7 @@ export default function App() {
   const switchToLocalMode = useCallback(() => {
     setLoading(true);
     setError(null);
+
     fetch("/api/data")
       .then((res) => res.json())
       .then((localData) => {
@@ -486,7 +519,7 @@ export default function App() {
         setIsLocalMode(true);
         setLoading(false);
       })
-      .catch((err) => {
+      .catch(() => {
         setError("Failed to load even local data. Please check your server.");
         setLoading(false);
       });
