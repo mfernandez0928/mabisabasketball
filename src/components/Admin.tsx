@@ -33,6 +33,7 @@ import {
   UpcomingGame,
   Award,
   PendingPayment,
+  SocialPost,
 } from "../types";
 import { Logo } from "./Logo";
 import { AwardCard } from "./AwardCard";
@@ -59,15 +60,7 @@ export const Admin: React.FC = () => {
     games: GameResult[];
     upcomingGame: UpcomingGame;
     socialMessages: { user: string; msg: string; time: string }[];
-    socialPosts: {
-      id: string;
-      authorName: string;
-      content: string;
-      createdAt: string;
-      imageUrl?: string;
-      likes: number;
-      comments: number;
-    }[];
+    socialPosts: SocialPost[];
     awards: Award[];
     gcashNumber?: string;
     gcashQrCode?: string;
@@ -151,13 +144,25 @@ export const Admin: React.FC = () => {
 
       newData.upcomingGame.pendingReservations.splice(reservationIndex, 1);
 
-      // Add to reserved
-      newData.upcomingGame.reservedPlayers.push({
-        firstName: reservation.firstName,
-        lastName: reservation.lastName,
-        age: reservation.age,
-        positions: reservation.positions || [],
-      });
+      // Add to reserved if not already there
+      const fullName =
+        `${reservation.firstName} ${reservation.lastName}`.trim();
+      const isAlreadyReserved = (
+        newData.upcomingGame.reservedPlayers || []
+      ).some(
+        (p: any) =>
+          `${p.firstName} ${p.lastName}`.trim().toLowerCase() ===
+          fullName.toLowerCase(),
+      );
+
+      if (!isAlreadyReserved) {
+        newData.upcomingGame.reservedPlayers.push({
+          firstName: reservation.firstName,
+          lastName: reservation.lastName,
+          age: reservation.age,
+          positions: reservation.positions || [],
+        });
+      }
 
       // Update filled slots
       newData.upcomingGame.filledSlots = (
@@ -165,8 +170,6 @@ export const Admin: React.FC = () => {
       ).length;
 
       // Add to global players list if not already there
-      const fullName =
-        `${reservation.firstName} ${reservation.lastName}`.trim();
       const playerExists = newData.players.some(
         (p: any) => p.name?.toLowerCase() === fullName.toLowerCase(),
       );
@@ -336,13 +339,24 @@ export const Admin: React.FC = () => {
 
       newData.upcomingGame.pendingPayments.splice(paymentIndex, 1);
 
-      // Add to reserved
-      newData.upcomingGame.reservedPlayers.push({
-        firstName: payment.firstName,
-        lastName: payment.lastName,
-        age: payment.age,
-        positions: payment.positions || [],
-      });
+      // Add to reserved if not already there
+      const fullName = `${payment.firstName} ${payment.lastName}`.trim();
+      const isAlreadyReserved = (
+        newData.upcomingGame.reservedPlayers || []
+      ).some(
+        (p: any) =>
+          `${p.firstName} ${p.lastName}`.trim().toLowerCase() ===
+          fullName.toLowerCase(),
+      );
+
+      if (!isAlreadyReserved) {
+        newData.upcomingGame.reservedPlayers.push({
+          firstName: payment.firstName,
+          lastName: payment.lastName,
+          age: payment.age,
+          positions: payment.positions || [],
+        });
+      }
 
       // Update filled slots
       newData.upcomingGame.filledSlots = (
@@ -350,7 +364,6 @@ export const Admin: React.FC = () => {
       ).length;
 
       // Add to global players list if not already there
-      const fullName = `${payment.firstName} ${payment.lastName}`.trim();
       const playerExists = newData.players.some(
         (p: any) => p.name?.toLowerCase() === fullName.toLowerCase(),
       );
@@ -2154,6 +2167,7 @@ export const Admin: React.FC = () => {
                               "/800/600",
                             likes: 0,
                             comments: 0,
+                            commentsList: [],
                           },
                           ...(data?.socialPosts || []),
                         ],

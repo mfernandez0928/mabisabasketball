@@ -58,6 +58,7 @@ export const Hero: React.FC<HeroProps> = ({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [showZoomedQr, setShowZoomedQr] = useState(false);
+  const [reservationError, setReservationError] = useState<string | null>(null);
 
   useEffect(() => {
     const target = safeParseDate(game.date).getTime();
@@ -121,6 +122,33 @@ export const Hero: React.FC<HeroProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    setReservationError(null);
+
+    const fullName = `${formData.firstName} ${formData.lastName}`
+      .trim()
+      .toLowerCase();
+
+    // Check if already in reserved players
+    const isAlreadyReserved = (game.reservedPlayers || []).some(
+      (p) => `${p.firstName} ${p.lastName}`.trim().toLowerCase() === fullName,
+    );
+
+    // Check if already in pending reservations
+    const isAlreadyPendingRes = (game.pendingReservations || []).some(
+      (p) => `${p.firstName} ${p.lastName}`.trim().toLowerCase() === fullName,
+    );
+
+    // Check if already in pending payments
+    const isAlreadyPendingPay = (game.pendingPayments || []).some(
+      (p) => `${p.firstName} ${p.lastName}`.trim().toLowerCase() === fullName,
+    );
+
+    if (isAlreadyReserved || isAlreadyPendingRes || isAlreadyPendingPay) {
+      setReservationError(
+        "A player with this name has already reserved or is pending confirmation for this game.",
+      );
+      return;
+    }
 
     if (step === 1) {
       setStep(2);
@@ -128,7 +156,9 @@ export const Hero: React.FC<HeroProps> = ({
     }
 
     if (formData.paymentMethod === "GCash" && !formData.screenshotUrl) {
-      alert("Please upload your GCash screenshot as proof of payment.");
+      setReservationError(
+        "Please upload your GCash screenshot as proof of payment.",
+      );
       return;
     }
 
@@ -166,6 +196,7 @@ export const Hero: React.FC<HeroProps> = ({
       setTimeout(() => {
         setShowReserveModal(false);
         setIsSuccess(false);
+        setReservationError(null);
         setStep(1);
         setFormData({
           firstName: "",
@@ -179,7 +210,7 @@ export const Hero: React.FC<HeroProps> = ({
       }, 8000); // 8 seconds to read the important message
     } catch (error) {
       console.error(error);
-      alert("Error reserving slot. Please try again.");
+      setReservationError("Error reserving slot. Please try again.");
       setIsSubmitting(false);
     }
   };
@@ -366,7 +397,10 @@ export const Hero: React.FC<HeroProps> = ({
 
         <div className="flex flex-col sm:flex-row gap-4 justify-center">
           <button
-            onClick={() => setShowReserveModal(true)}
+            onClick={() => {
+              setReservationError(null);
+              setShowReserveModal(true);
+            }}
             className="px-8 py-4 bg-neon-blue text-black font-display text-xl rounded-xl hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,242,255,0.4)]"
           >
             Reserve My Slot
@@ -455,7 +489,12 @@ export const Hero: React.FC<HeroProps> = ({
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              onClick={() => !isSubmitting && setShowReserveModal(false)}
+              onClick={() => {
+                if (!isSubmitting) {
+                  setShowReserveModal(false);
+                  setReservationError(null);
+                }
+              }}
               className="absolute inset-0 bg-black/80 backdrop-blur-sm"
             />
             <motion.div
@@ -467,7 +506,10 @@ export const Hero: React.FC<HeroProps> = ({
               <div className="p-6 border-b border-white/10 flex justify-between items-center bg-white/5 shrink-0">
                 <h3 className="text-2xl font-display">Reserve Your Slot</h3>
                 <button
-                  onClick={() => setShowReserveModal(false)}
+                  onClick={() => {
+                    setShowReserveModal(false);
+                    setReservationError(null);
+                  }}
                   className="p-2 hover:bg-white/10 rounded-full transition-colors"
                   disabled={isSubmitting}
                 >
@@ -476,6 +518,16 @@ export const Hero: React.FC<HeroProps> = ({
               </div>
 
               <div className="p-6 pb-10 sm:pb-6 overflow-y-auto flex-1 custom-scrollbar">
+                {reservationError && (
+                  <motion.div
+                    initial={{ opacity: 0, y: -10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    className="mb-4 p-3 bg-neon-red/10 border border-neon-red/20 rounded-xl text-neon-red text-xs font-medium flex items-center gap-2"
+                  >
+                    <X size={14} className="shrink-0" />
+                    {reservationError}
+                  </motion.div>
+                )}
                 {isSuccess ? (
                   <motion.div
                     initial={{ scale: 0.8, opacity: 0 }}
