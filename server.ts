@@ -243,12 +243,10 @@ async function startServer() {
     );
 
     if (isAlreadyReserved || isAlreadyPendingRes || isAlreadyPendingPay) {
-      return res
-        .status(400)
-        .json({
-          status: "error",
-          message: "Player already reserved or pending",
-        });
+      return res.status(400).json({
+        status: "error",
+        message: "Player already reserved or pending",
+      });
     }
 
     if (paymentMethod === "GCash") {

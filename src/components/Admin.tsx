@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "motion/react";
+import * as XLSX from "xlsx";
 import {
   Save,
   Plus,
@@ -14,6 +15,8 @@ import {
   Users,
   User,
   Trophy,
+  Zap,
+  RotateCcw,
   Camera,
   Loader2,
   Wallet,
@@ -77,6 +80,8 @@ export const Admin: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   const navigate = useNavigate();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const excelInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     const token = localStorage.getItem("admin-token");
@@ -414,6 +419,7 @@ export const Admin: React.FC = () => {
 
   const handleAwardImageUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
+    slotId: string,
     awardType: "Player of the Night" | "Hustle Player",
   ) => {
     const file = e.target.files?.[0];
@@ -421,14 +427,16 @@ export const Admin: React.FC = () => {
 
     try {
       const fileExt = file.name.split(".").pop();
-      const fileName = `award_${awardType.replace(/\s+/g, "_")}_${Date.now()}.${fileExt}`;
+      const fileName = `award_${slotId}_${Date.now()}.${fileExt}`;
       const filePath = `awards/${fileName}`;
 
       const publicUrl = await uploadFile("social-post", filePath, file);
 
       // Create or update award
       const newAwards = [...(data.awards || [])];
-      const existingIndex = newAwards.findIndex((a) => a.type === awardType);
+      const existingIndex = newAwards.findIndex(
+        (a) => a.slotId === slotId && a.isCurrent,
+      );
 
       if (existingIndex > -1) {
         newAwards[existingIndex] = {
@@ -439,6 +447,8 @@ export const Admin: React.FC = () => {
         newAwards.push({
           id: Math.random().toString(36).substr(2, 9),
           type: awardType,
+          slotId,
+          isCurrent: true,
           playerName: "",
           photoUrl: publicUrl,
           stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 },
@@ -452,6 +462,18 @@ export const Admin: React.FC = () => {
     } catch (error) {
       console.error("Upload error:", error);
       alert("Failed to upload award image.");
+    }
+  };
+
+  const handleResetAwards = () => {
+    if (!data.awards) return;
+    if (
+      window.confirm(
+        "Are you sure you want to reset the current awards? This will move them to history.",
+      )
+    ) {
+      const resetAwards = data.awards.map((a) => ({ ...a, isCurrent: false }));
+      setData({ ...data, awards: resetAwards });
     }
   };
 
@@ -479,6 +501,170 @@ export const Admin: React.FC = () => {
     }
   };
 
+  const handleExcelUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !data) return;
+
+    console.log("File selected:", file.name, file.type);
+
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const dataBuffer = evt.target?.result;
+        if (!dataBuffer) {
+          alert("Failed to read file data.");
+          return;
+        }
+
+        const wb = XLSX.read(dataBuffer, { type: "array" });
+        const wsname = wb.SheetNames[0];
+        const ws = wb.Sheets[wsname];
+
+        const rawJsonData = XLSX.utils.sheet_to_json(ws, { defval: "" });
+        console.log("Raw Excel Data:", rawJsonData);
+
+        if (!rawJsonData || rawJsonData.length === 0) {
+          alert(
+            "The Excel file seems to be empty or has no recognizable data.",
+          );
+          return;
+        }
+
+        const newPlayers = [...(data.players || [])];
+        let updatedCount = 0;
+        let addedCount = 0;
+
+        // Helper to find value by flexible key matching
+        const getValue = (row: any, searchKeys: string[]) => {
+          const rowKeys = Object.keys(row);
+          for (const searchKey of searchKeys) {
+            const foundKey = rowKeys.find(
+              (k) =>
+                k.trim().toUpperCase() === searchKey.toUpperCase() ||
+                k.trim().toUpperCase().includes(searchKey.toUpperCase()),
+            );
+            if (foundKey) return row[foundKey];
+          }
+          return "";
+        };
+
+        rawJsonData.forEach((row: any, index: number) => {
+          let firstName = String(
+            getValue(row, ["FIRST NAME", "FIRSTNAME", "FNAME"]) || "",
+          ).trim();
+          let lastName = String(
+            getValue(row, ["LAST NAME", "LASTNAME", "LNAME"]) || "",
+          ).trim();
+          let fullName = `${firstName} ${lastName}`.trim();
+
+          // Fallback to "PLAYER NAME" or "NAME" or "FULL NAME" if first/last are missing
+          if (!fullName) {
+            fullName = String(
+              getValue(row, ["PLAYER NAME", "NAME", "FULL NAME", "FULLNAME"]) ||
+                "",
+            ).trim();
+          }
+
+          if (!fullName) {
+            console.warn(`Row ${index + 1} skipped: No name found.`, row);
+            return;
+          }
+
+          const points =
+            parseInt(getValue(row, ["TOTAL POINTS", "POINTS", "PTS"])) || 0;
+          const assists =
+            parseInt(getValue(row, ["TOTAL ASSISTS", "ASSISTS", "AST"])) || 0;
+          const rebounds =
+            parseInt(getValue(row, ["TOTAL REBOUNDS", "REBOUNDS", "REB"])) || 0;
+          const steals =
+            parseInt(getValue(row, ["TOTAL STEALS", "STEALS", "STL"])) || 0;
+          const blocks =
+            parseInt(getValue(row, ["TOTAL BLOCKS", "BLOCKS", "BLK"])) || 0;
+          const fg2m =
+            parseInt(getValue(row, ["TOTAL 2PM", "2PM", "FG2M"])) || 0;
+          const fg3m =
+            parseInt(getValue(row, ["TOTAL 3PM", "3PM", "FG3M"])) || 0;
+          const oreb =
+            parseInt(
+              getValue(row, [
+                "TOTAL OFFENSIVE REBOUNDS",
+                "OFFENSIVE REBOUNDS",
+                "OREB",
+              ]),
+            ) || 0;
+          const dreb =
+            parseInt(
+              getValue(row, [
+                "TOTAL DEFENSIVE REBOUNDS",
+                "DEFENSIVE REBOUNDS",
+                "DREB",
+              ]),
+            ) || 0;
+          const gamesPlayed =
+            parseInt(getValue(row, ["GAMES PLAYED", "GP"])) || 0;
+
+          const existingPlayerIdx = newPlayers.findIndex(
+            (p) => p.name.toLowerCase() === fullName.toLowerCase(),
+          );
+
+          if (existingPlayerIdx !== -1) {
+            newPlayers[existingPlayerIdx] = {
+              ...newPlayers[existingPlayerIdx],
+              points,
+              assists,
+              rebounds,
+              steals,
+              blocks,
+              fg2m,
+              fg3m,
+              oreb,
+              dreb,
+              gamesPlayed:
+                gamesPlayed || newPlayers[existingPlayerIdx].gamesPlayed,
+            };
+            updatedCount++;
+          } else {
+            newPlayers.push({
+              id: Math.random().toString(36).substr(2, 9),
+              name: fullName,
+              points,
+              assists,
+              rebounds,
+              steals,
+              blocks,
+              fg2m,
+              fg3m,
+              oreb,
+              dreb,
+              gamesPlayed,
+              mvps: 0,
+              wins: 0,
+              image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`,
+            });
+            addedCount++;
+          }
+        });
+
+        setData({ ...data, players: newPlayers });
+        alert(
+          `Excel upload successful!\nUpdated: ${updatedCount} players\nAdded: ${addedCount} new players\n\nDon't forget to click "SAVE CHANGES" to persist to database.`,
+        );
+      } catch (err) {
+        console.error("Excel parse error:", err);
+        alert(
+          "Error parsing Excel file. Please check the format and ensure it's a valid .xlsx, .xls, or .csv file.",
+        );
+      }
+    };
+    reader.onerror = (err) => {
+      console.error("FileReader error:", err);
+      alert("Failed to read the file.");
+    };
+    reader.readAsArrayBuffer(file);
+    // Reset input
+    if (e.target) e.target.value = "";
+  };
+
   const handleSave = async () => {
     if (!data) return;
     setIsSaving(true);
@@ -500,14 +686,33 @@ export const Admin: React.FC = () => {
             assists: 0,
             steals: 0,
             blocks: 0,
+            fg2m: 0,
+            fg3m: 0,
+            oreb: 0,
+            dreb: 0,
             mvps: 0,
             wins: 0,
+            gamesPlayed: 0,
             image: `https://api.dicebear.com/7.x/avataaars/svg?seed=${fullName}`,
           });
         }
       });
 
+      // Re-calculate MVPs for all players based on games history (MVP, POTN, Hustle)
+      newData.players = newData.players.map((p: any) => {
+        let mvpCount = 0;
+        (newData.games || []).forEach((g: any) => {
+          if (g.mvpId === p.id) mvpCount++;
+          if (g.playerOfTheNightId === p.id) mvpCount++;
+          (g.hustlePlayerIds || []).forEach((hId: string) => {
+            if (hId === p.id) mvpCount++;
+          });
+        });
+        return { ...p, mvps: mvpCount };
+      });
+
       await setDoc(doc(db, "settings", "app_data"), newData);
+      setData(newData);
       alert("Data saved successfully to Firestore!");
     } catch (error) {
       console.error(error);
@@ -1727,67 +1932,137 @@ export const Admin: React.FC = () => {
                       </div>
                     </div>
 
-                    <div>
-                      <div className="flex justify-between items-center mb-1">
-                        <label className="block text-xs font-mono text-white/40 uppercase">
-                          MVP of the Game
-                        </label>
-                        <button
-                          onClick={() => {
-                            // Find player with most points across both teams in this game
-                            // Note: This requires the game to have player stats recorded in its own structure
-                            // Currently the game structure only has score and player names/pts
-                            const allGamePlayers = [
-                              ...(game.teamWhite?.players || []),
-                              ...(game.teamBlue?.players || []),
-                            ];
-                            if (allGamePlayers.length > 0) {
-                              const topPlayer = allGamePlayers.reduce(
-                                (prev, current) =>
-                                  prev.pts > current.pts ? prev : current,
-                              );
-                              // Find the actual player ID from the global players list
-                              const actualPlayer = data.players.find(
-                                (p) =>
-                                  p.name.toLowerCase() ===
-                                  topPlayer.name.toLowerCase(),
-                              );
-                              if (actualPlayer) {
-                                const newGames = [...data.games];
-                                newGames[gIdx].mvpId = actualPlayer.id;
-                                setData({ ...data, games: newGames });
-                              } else {
-                                alert(
-                                  `Could not find global profile for ${topPlayer.name}. Make sure they are in the Players list.`,
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div>
+                        <div className="flex justify-between items-center mb-1">
+                          <label className="block text-[10px] font-mono text-white/40 uppercase">
+                            MVP of the Game
+                          </label>
+                          <button
+                            onClick={() => {
+                              const allGamePlayers = [
+                                ...(game.teamWhite?.players || []),
+                                ...(game.teamBlue?.players || []),
+                              ];
+                              if (allGamePlayers.length > 0) {
+                                const topPlayer = allGamePlayers.reduce(
+                                  (prev, current) =>
+                                    prev.pts > current.pts ? prev : current,
                                 );
+                                const actualPlayer = data.players.find(
+                                  (p) =>
+                                    p.name.toLowerCase() ===
+                                    topPlayer.name.toLowerCase(),
+                                );
+                                if (actualPlayer) {
+                                  const newGames = [...data.games];
+                                  newGames[gIdx].mvpId = actualPlayer.id;
+                                  setData({ ...data, games: newGames });
+                                } else {
+                                  alert(
+                                    `Could not find profile for ${topPlayer.name}.`,
+                                  );
+                                }
                               }
-                            } else {
-                              alert(
-                                "No player stats recorded for this game yet.",
-                              );
-                            }
+                            }}
+                            className="text-[8px] text-neon-blue hover:underline font-mono uppercase"
+                          >
+                            Auto-Select
+                          </button>
+                        </div>
+                        <select
+                          value={game.mvpId}
+                          onChange={(e) => {
+                            const newGames = [...data.games];
+                            newGames[gIdx].mvpId = e.target.value;
+                            setData({ ...data, games: newGames });
                           }}
-                          className="text-[10px] text-neon-blue hover:underline font-mono uppercase"
+                          className="w-full bg-black border border-white/10 rounded px-2 py-1 text-xs text-white"
                         >
-                          Auto-Select Top Scorer
-                        </button>
+                          <option value="">Select MVP</option>
+                          {data.players.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
                       </div>
-                      <select
-                        value={game.mvpId}
-                        onChange={(e) => {
-                          const newGames = [...data.games];
-                          newGames[gIdx].mvpId = e.target.value;
-                          setData({ ...data, games: newGames });
-                        }}
-                        className="w-full bg-black border border-white/10 rounded px-3 py-1 text-sm text-white"
-                      >
-                        <option value="">Select MVP Player</option>
-                        {data.players.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </select>
+
+                      <div>
+                        <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                          Player of the Night
+                        </label>
+                        <select
+                          value={game.playerOfTheNightId || ""}
+                          onChange={(e) => {
+                            const newGames = [...data.games];
+                            newGames[gIdx].playerOfTheNightId = e.target.value;
+                            setData({ ...data, games: newGames });
+                          }}
+                          className="w-full bg-black border border-white/10 rounded px-2 py-1 text-xs text-white"
+                        >
+                          <option value="">Select POTN</option>
+                          {data.players.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                            Hustle Player 1
+                          </label>
+                          <select
+                            value={(game.hustlePlayerIds || [])[0] || ""}
+                            onChange={(e) => {
+                              const newGames = [...data.games];
+                              const currentIds = [
+                                ...(newGames[gIdx].hustlePlayerIds || []),
+                              ];
+                              currentIds[0] = e.target.value;
+                              newGames[gIdx].hustlePlayerIds = currentIds;
+                              setData({ ...data, games: newGames });
+                            }}
+                            className="w-full bg-black border border-white/10 rounded px-2 py-1 text-xs text-white"
+                          >
+                            <option value="">Select Hustle 1</option>
+                            {data.players.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-[10px] font-mono text-white/40 uppercase mb-1">
+                            Hustle Player 2
+                          </label>
+                          <select
+                            value={(game.hustlePlayerIds || [])[1] || ""}
+                            onChange={(e) => {
+                              const newGames = [...data.games];
+                              const currentIds = [
+                                ...(newGames[gIdx].hustlePlayerIds || []),
+                              ];
+                              currentIds[1] = e.target.value;
+                              newGames[gIdx].hustlePlayerIds = currentIds;
+                              setData({ ...data, games: newGames });
+                            }}
+                            className="w-full bg-black border border-white/10 rounded px-2 py-1 text-xs text-white"
+                          >
+                            <option value="">Select Hustle 2</option>
+                            {data.players.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -1799,36 +2074,52 @@ export const Admin: React.FC = () => {
             <div className="space-y-8">
               <div className="flex justify-between items-center">
                 <h2 className="text-3xl font-display">Player Stats</h2>
-                <button
-                  onClick={() =>
-                    setData({
-                      ...data,
-                      players: [
-                        ...(data.players || []),
-                        {
-                          id: Math.random().toString(36).substr(2, 9),
-                          name: "New Player",
-                          points: 0,
-                          rebounds: 0,
-                          assists: 0,
-                          steals: 0,
-                          blocks: 0,
-                          fg2m: 0,
-                          fg3m: 0,
-                          oreb: 0,
-                          dreb: 0,
-                          gamesPlayed: 0,
-                          mvps: 0,
-                          wins: 0,
-                          image: "https://picsum.photos/seed/new/800/1000",
-                        },
-                      ],
-                    })
-                  }
-                  className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-xs font-mono uppercase"
-                >
-                  Add Player
-                </button>
+                <div className="flex gap-3">
+                  <input
+                    type="file"
+                    ref={excelInputRef}
+                    className="hidden"
+                    accept=".xlsx, .xls, .csv"
+                    onChange={handleExcelUpload}
+                  />
+                  <button
+                    onClick={() => excelInputRef.current?.click()}
+                    className="bg-neon-blue/10 hover:bg-neon-blue/20 border border-neon-blue/20 px-4 py-2 rounded-lg text-xs font-mono uppercase text-neon-blue flex items-center gap-2 transition-all"
+                  >
+                    <Save size={14} />
+                    Upload Excel
+                  </button>
+                  <button
+                    onClick={() =>
+                      setData({
+                        ...data,
+                        players: [
+                          ...(data.players || []),
+                          {
+                            id: Math.random().toString(36).substr(2, 9),
+                            name: "New Player",
+                            points: 0,
+                            rebounds: 0,
+                            assists: 0,
+                            steals: 0,
+                            blocks: 0,
+                            fg2m: 0,
+                            fg3m: 0,
+                            oreb: 0,
+                            dreb: 0,
+                            gamesPlayed: 0,
+                            mvps: 0,
+                            wins: 0,
+                            image: "https://picsum.photos/seed/new/800/1000",
+                          },
+                        ],
+                      })
+                    }
+                    className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-xs font-mono uppercase"
+                  >
+                    Add Player
+                  </button>
+                </div>
               </div>
 
               <div className="grid grid-cols-1 gap-4">
@@ -1874,13 +2165,17 @@ export const Admin: React.FC = () => {
                       </button>
                     </div>
 
-                    <div className="grid grid-cols-4 md:grid-cols-7 gap-4">
+                    <div className="grid grid-cols-4 md:grid-cols-6 lg:grid-cols-11 gap-4">
                       {[
                         { label: "PTS", key: "points" },
                         { label: "REB", key: "rebounds" },
                         { label: "AST", key: "assists" },
                         { label: "STL", key: "steals" },
                         { label: "BLK", key: "blocks" },
+                        { label: "2PM", key: "fg2m" },
+                        { label: "3PM", key: "fg3m" },
+                        { label: "OREB", key: "oreb" },
+                        { label: "DREB", key: "dreb" },
                         { label: "GP", key: "gamesPlayed" },
                         { label: "MVPs", key: "mvps" },
                       ].map((stat) => (
@@ -1890,12 +2185,11 @@ export const Admin: React.FC = () => {
                           </label>
                           <input
                             type="number"
-                            value={(player as any)[stat.key]}
+                            value={(player as any)[stat.key] || 0}
                             onChange={(e) => {
                               const newPlayers = [...data.players];
-                              (newPlayers[pIdx] as any)[stat.key] = parseInt(
-                                e.target.value,
-                              );
+                              (newPlayers[pIdx] as any)[stat.key] =
+                                parseInt(e.target.value) || 0;
                               setData({ ...data, players: newPlayers });
                             }}
                             className="w-full bg-black border border-white/10 rounded px-2 py-1 text-sm text-center"
@@ -1951,111 +2245,154 @@ export const Admin: React.FC = () => {
           {activeTab === "awards" && (
             <div className="space-y-12">
               <div className="flex justify-between items-center">
-                <h2 className="text-3xl font-display">Game Awards</h2>
-                <button
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="flex items-center gap-2 bg-neon-blue text-black px-6 py-3 rounded-xl font-display text-lg hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,242,255,0.4)] disabled:opacity-50"
-                >
-                  {isSaving ? (
-                    <Loader2 size={20} className="animate-spin" />
-                  ) : (
-                    <Save size={20} />
-                  )}
-                  SAVE AWARDS
-                </button>
+                <div className="space-y-1">
+                  <h2 className="text-3xl font-display">Game Awards</h2>
+                  <p className="text-white/40 text-xs font-mono uppercase tracking-widest">
+                    Spotlight the best from the latest run
+                  </p>
+                </div>
+                <div className="flex items-center gap-4">
+                  <button
+                    onClick={handleResetAwards}
+                    className="flex items-center gap-2 bg-white/5 border border-white/10 text-white px-4 py-2 rounded-xl font-mono text-xs hover:bg-white/10 transition-all uppercase tracking-widest"
+                  >
+                    <RotateCcw size={16} />
+                    Reset Awards
+                  </button>
+                  <button
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="flex items-center gap-2 bg-neon-blue text-black px-6 py-3 rounded-xl font-display text-lg hover:scale-105 transition-transform shadow-[0_0_20px_rgba(0,242,255,0.4)] disabled:opacity-50"
+                  >
+                    {isSaving ? (
+                      <Loader2 size={20} className="animate-spin" />
+                    ) : (
+                      <Save size={20} />
+                    )}
+                    SAVE AWARDS
+                  </button>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-12">
-                {(["Player of the Night", "Hustle Player"] as const).map(
-                  (type) => {
-                    const award = data.awards?.find((a) => a.type === type) || {
-                      id: `award-${type.replace(/\s+/g, "_").toLowerCase()}`,
-                      type,
-                      playerName: "",
-                      photoUrl: "",
-                      stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 },
-                      caption: "",
-                      gameDate: new Date().toISOString().split("T")[0],
-                    };
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+                {[
+                  {
+                    id: "potn",
+                    type: "Player of the Night",
+                    label: "Player of the Night",
+                  },
+                  {
+                    id: "hustle1",
+                    type: "Hustle Player",
+                    label: "Hustle Player 1",
+                  },
+                  {
+                    id: "hustle2",
+                    type: "Hustle Player",
+                    label: "Hustle Player 2",
+                  },
+                ].map((slot) => {
+                  const award = (data.awards || []).find(
+                    (a) => a.slotId === slot.id && a.isCurrent,
+                  ) || {
+                    id: Math.random().toString(36).substr(2, 9),
+                    type: slot.type as any,
+                    slotId: slot.id,
+                    isCurrent: true,
+                    playerName: "",
+                    photoUrl: "",
+                    stats: { pts: 0, reb: 0, ast: 0, stl: 0, blk: 0 },
+                    caption: "",
+                    gameDate: new Date().toISOString().split("T")[0],
+                  };
 
-                    return (
-                      <div key={type} className="space-y-8">
-                        <div className="bg-card-bg p-6 rounded-2xl border border-white/5 space-y-6">
-                          <div className="flex justify-between items-center">
-                            <h3 className="text-xl font-display text-neon-blue uppercase tracking-tighter">
-                              {type}
-                            </h3>
-                            <Trophy size={20} className="text-yellow-500" />
+                  return (
+                    <div key={slot.id} className="space-y-6">
+                      <div className="bg-card-bg p-6 rounded-2xl border border-white/5 space-y-6">
+                        <div className="flex justify-between items-center">
+                          <h3 className="text-lg font-display text-neon-blue uppercase tracking-tighter">
+                            {slot.label}
+                          </h3>
+                          {slot.type === "Player of the Night" ? (
+                            <Trophy size={18} className="text-yellow-500" />
+                          ) : (
+                            <Zap size={18} className="text-neon-red" />
+                          )}
+                        </div>
+
+                        <div className="space-y-4">
+                          <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 group">
+                            {award.photoUrl ? (
+                              <img
+                                src={award.photoUrl}
+                                alt={slot.label}
+                                className="w-full h-full object-cover"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center text-white/20">
+                                <Camera size={24} className="mb-2" />
+                                <span className="text-[8px] font-mono uppercase">
+                                  No Photo
+                                </span>
+                              </div>
+                            )}
+                            <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                              <input
+                                type="file"
+                                className="hidden"
+                                accept="image/*"
+                                onChange={(e) =>
+                                  handleAwardImageUpload(
+                                    e,
+                                    slot.id,
+                                    slot.type as any,
+                                  )
+                                }
+                              />
+                              <div className="flex items-center gap-2 text-[10px] font-mono uppercase">
+                                <Plus size={14} />
+                                {award.photoUrl ? "Change" : "Upload"}
+                              </div>
+                            </label>
                           </div>
 
-                          <div className="space-y-4">
-                            <div className="relative aspect-video bg-black rounded-xl overflow-hidden border border-white/10 group">
-                              {award.photoUrl ? (
-                                <img
-                                  src={award.photoUrl}
-                                  alt={type}
-                                  className="w-full h-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-full h-full flex flex-col items-center justify-center text-white/20">
-                                  <Camera size={32} className="mb-2" />
-                                  <span className="text-[10px] font-mono uppercase">
-                                    No Photo
-                                  </span>
-                                </div>
-                              )}
-                              <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
-                                <input
-                                  type="file"
-                                  className="hidden"
-                                  accept="image/*"
-                                  onChange={(e) =>
-                                    handleAwardImageUpload(e, type)
-                                  }
-                                />
-                                <div className="flex items-center gap-2 text-xs font-mono uppercase">
-                                  <Plus size={16} />
-                                  {award.photoUrl
-                                    ? "Change Photo"
-                                    : "Upload Photo"}
-                                </div>
-                              </label>
-                            </div>
+                          <div>
+                            <label className="block text-[8px] font-mono text-white/40 uppercase mb-1">
+                              Player Name
+                            </label>
+                            <select
+                              value={award.playerName}
+                              onChange={(e) => {
+                                const newAwards = [...(data.awards || [])];
+                                const idx = newAwards.findIndex(
+                                  (a) => a.slotId === slot.id && a.isCurrent,
+                                );
+                                if (idx > -1) {
+                                  newAwards[idx].playerName = e.target.value;
+                                } else {
+                                  newAwards.push({
+                                    ...award,
+                                    playerName: e.target.value,
+                                  });
+                                }
+                                setData({ ...data, awards: newAwards });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded-lg px-3 py-1.5 focus:outline-none focus:border-neon-blue text-xs"
+                            >
+                              <option value="">Select Player</option>
+                              {data.players.map((p) => (
+                                <option key={p.id} value={p.name}>
+                                  {p.name}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
 
-                            <div>
-                              <label className="block text-[10px] font-mono text-white/40 uppercase mb-2">
-                                Player Name
-                              </label>
-                              <input
-                                type="text"
-                                value={award.playerName}
-                                onChange={(e) => {
-                                  const newAwards = [...(data.awards || [])];
-                                  const idx = newAwards.findIndex(
-                                    (a) => a.type === type,
-                                  );
-                                  if (idx > -1) {
-                                    newAwards[idx].playerName = e.target.value;
-                                  } else {
-                                    newAwards.push({
-                                      ...award,
-                                      playerName: e.target.value,
-                                    });
-                                  }
-                                  setData({ ...data, awards: newAwards });
-                                }}
-                                className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 focus:outline-none focus:border-neon-blue"
-                                placeholder="Enter player name"
-                              />
-                            </div>
-
-                            <div className="grid grid-cols-5 gap-2">
-                              {(
-                                ["pts", "reb", "ast", "stl", "blk"] as const
-                              ).map((stat) => (
+                          <div className="grid grid-cols-5 gap-1">
+                            {(["pts", "reb", "ast", "stl", "blk"] as const).map(
+                              (stat) => (
                                 <div key={stat}>
-                                  <label className="block text-[8px] font-mono text-white/40 uppercase mb-1">
+                                  <label className="block text-[7px] font-mono text-white/40 uppercase mb-1">
                                     {stat}
                                   </label>
                                   <input
@@ -2066,7 +2403,8 @@ export const Admin: React.FC = () => {
                                         ...(data.awards || []),
                                       ];
                                       const idx = newAwards.findIndex(
-                                        (a) => a.type === type,
+                                        (a) =>
+                                          a.slotId === slot.id && a.isCurrent,
                                       );
                                       if (idx > -1) {
                                         newAwards[idx].stats[stat] =
@@ -2083,53 +2421,53 @@ export const Admin: React.FC = () => {
                                       }
                                       setData({ ...data, awards: newAwards });
                                     }}
-                                    className="w-full bg-black border border-white/10 rounded-lg px-2 py-1 text-center text-xs focus:outline-none focus:border-neon-blue"
+                                    className="w-full bg-black border border-white/10 rounded-lg px-1 py-1 text-center text-[10px] focus:outline-none focus:border-neon-blue"
                                   />
                                 </div>
-                              ))}
-                            </div>
-
-                            <div>
-                              <label className="block text-[10px] font-mono text-white/40 uppercase mb-2">
-                                Caption
-                              </label>
-                              <textarea
-                                value={award.caption}
-                                onChange={(e) => {
-                                  const newAwards = [...(data.awards || [])];
-                                  const idx = newAwards.findIndex(
-                                    (a) => a.type === type,
-                                  );
-                                  if (idx > -1) {
-                                    newAwards[idx].caption = e.target.value;
-                                  } else {
-                                    newAwards.push({
-                                      ...award,
-                                      caption: e.target.value,
-                                    });
-                                  }
-                                  setData({ ...data, awards: newAwards });
-                                }}
-                                className="w-full bg-black border border-white/10 rounded-lg px-4 py-2 h-20 resize-none focus:outline-none focus:border-neon-blue text-sm"
-                                placeholder="Short caption about the performance..."
-                              />
-                            </div>
+                              ),
+                            )}
                           </div>
-                        </div>
 
-                        {/* Poster Preview */}
-                        <div className="space-y-4">
-                          <h4 className="text-xs font-mono text-white/40 uppercase tracking-widest text-center">
-                            Poster Preview
-                          </h4>
-                          <div className="max-w-[320px] mx-auto">
-                            <AwardCard award={award} />
+                          <div>
+                            <label className="block text-[8px] font-mono text-white/40 uppercase mb-1">
+                              Caption
+                            </label>
+                            <textarea
+                              value={award.caption}
+                              onChange={(e) => {
+                                const newAwards = [...(data.awards || [])];
+                                const idx = newAwards.findIndex(
+                                  (a) => a.slotId === slot.id && a.isCurrent,
+                                );
+                                if (idx > -1) {
+                                  newAwards[idx].caption = e.target.value;
+                                } else {
+                                  newAwards.push({
+                                    ...award,
+                                    caption: e.target.value,
+                                  });
+                                }
+                                setData({ ...data, awards: newAwards });
+                              }}
+                              className="w-full bg-black border border-white/10 rounded-lg px-3 py-1.5 h-16 resize-none focus:outline-none focus:border-neon-blue text-xs"
+                              placeholder="Short caption..."
+                            />
                           </div>
                         </div>
                       </div>
-                    );
-                  },
-                )}
+
+                      {/* Poster Preview */}
+                      <div className="space-y-3">
+                        <h4 className="text-[10px] font-mono text-white/40 uppercase tracking-widest text-center">
+                          Preview
+                        </h4>
+                        <div className="max-w-[240px] mx-auto scale-90">
+                          <AwardCard award={award} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

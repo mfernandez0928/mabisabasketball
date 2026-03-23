@@ -9,6 +9,13 @@ export interface Event {
   entranceFee: string;
 }
 
+export interface SocialComment {
+  id: string;
+  authorName: string;
+  text: string;
+  createdAt: string;
+}
+
 export interface SocialPost {
   id: string;
   authorName: string;
@@ -17,6 +24,7 @@ export interface SocialPost {
   imageUrl?: string;
   likes: number;
   comments: number;
+  commentsList?: SocialComment[];
   createdAt: string;
 }
 
@@ -28,6 +36,10 @@ export interface PlayerStats {
   assists: number;
   steals: number;
   blocks: number;
+  fg2m?: number;
+  fg3m?: number;
+  oreb?: number;
+  dreb?: number;
   gamesPlayed: number;
   mvps: number;
   wins: number;
@@ -57,6 +69,8 @@ export interface GameResult {
     players: GamePlayerStats[];
   };
   mvpId: string;
+  playerOfTheNightId?: string;
+  hustlePlayerIds?: string[];
   location: string;
 }
 
@@ -74,6 +88,8 @@ export interface Award {
   };
   caption: string;
   gameDate: string;
+  isCurrent?: boolean;
+  slotId?: string;
 }
 
 export interface PendingPayment {

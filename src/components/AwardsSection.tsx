@@ -1,8 +1,8 @@
-import React from 'react';
-import { motion } from 'motion/react';
-import { Trophy, Star } from 'lucide-react';
-import { Award } from '../types';
-import { AwardCard } from './AwardCard';
+import React from "react";
+import { motion } from "motion/react";
+import { Trophy, Star } from "lucide-react";
+import { Award } from "../types";
+import { AwardCard } from "./AwardCard";
 
 interface AwardsSectionProps {
   awards: Award[];
@@ -11,14 +11,17 @@ interface AwardsSectionProps {
 export const AwardsSection: React.FC<AwardsSectionProps> = ({ awards }) => {
   if (!awards || awards.length === 0) return null;
 
+  const currentAwards = awards.filter((a) => a.isCurrent);
+  if (currentAwards.length === 0) return null;
+
   return (
     <section className="py-24 relative overflow-hidden">
       {/* Background Decorations */}
       <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[800px] bg-neon-blue/5 blur-[120px] rounded-full" />
-      
+
       <div className="container mx-auto px-4 relative z-10">
         <div className="text-center mb-16 space-y-4">
-          <motion.div 
+          <motion.div
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -27,7 +30,7 @@ export const AwardsSection: React.FC<AwardsSectionProps> = ({ awards }) => {
             <Trophy size={14} />
             Game Recognition
           </motion.div>
-          <motion.h2 
+          <motion.h2
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
@@ -36,21 +39,22 @@ export const AwardsSection: React.FC<AwardsSectionProps> = ({ awards }) => {
           >
             Players of the <span className="text-neon-blue">Game</span>
           </motion.h2>
-          <motion.p 
+          <motion.p
             initial={{ opacity: 0, y: 20 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
             transition={{ delay: 0.2 }}
             className="text-white/40 max-w-2xl mx-auto text-sm md:text-base font-medium"
           >
-            Celebrating outstanding performances and hustle from our latest match.
+            Celebrating outstanding performances and hustle from our latest
+            match.
           </motion.p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-12 max-w-5xl mx-auto">
-          {awards.map((award, index) => (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
+          {currentAwards.map((award, index) => (
             <motion.div
-              key={award.id || `${award.type}-${index}`}
+              key={award.id || `award-section-${award.type}-${index}`}
               initial={{ opacity: 0, y: 40 }}
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
